@@ -48,33 +48,38 @@ def get_parser(): #parses flags at onset of command
         , help="Output BIDS directory, Default: Inside current directory "
         )
     
-    parser.add_argument(
-        "-s"
-        ,"--sub_ids"
-        , nargs='*'
-        , type=int
-        , required=False
-        , help="""
-        subject numbers you wish to analyze, if flag is not called then it is assumed that 
-        the input directory includes the subject. If not, then all subjects are run, assuming BIDS format is followed
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        '-ex',
+        '--exclude',
+        nargs='*',
+        required=False,
+        default=None,
+        help="""
+        hi
+        """)
+    group.add_argument(
+        '-in',
+        '--include',
+        nargs='*',
+        required=False,
+        default=None,
+        help="""
         
-        """
-    )
+        """)
 
     return(parser)
 
 class Preprocessing():
-    def __init__(self, input_dir=None, output_dir=None, multi_echo=None, sub_ids=None, verbose=False): #sets the .self globalization for self variables
+    def __init__(self, input_dir=None, output_dir=None, multi_echo=None, include=None, exclude=None, verbose=False): #sets the .self globalization for self variables
         self._input_dir = None
         self._output_dir = None
 
         self.set_data_dir(input_dir)
         self.set_out_dir(output_dir)
-        self.set_sub_ids(sub_ids)
         self.set_verbosity(verbose)
         if self._data_dir is not None:
-            self.BIDS_layout = BIDSLayout(self._data_dir, derivatives=True)
-        self.set_multi_echo(self.BIDS_layout)
+            self.set_bids(include,exclude)
 
     def set_verbosity(self,verbosity):
         if verbosity:
@@ -82,29 +87,50 @@ class Preprocessing():
         else:
             self._is_verbose = False
 
-    def set_sub_ids(self,sub_id):
-        if sub_id is None and not os.path.isfile(self._data_dir + '/dataset_description.json'):
-            self.is_multiple = False
-            try:
-                self._sub_ids = int(re.search("sub-([0-9]{2})", self._data_dir))
-            except AssertionError:
-                raise AssertionError("Preprocessing failed, is your data up to the BIDS standard?"+
-             "You can check compatability using this link: http://bids-standard.github.io/bids-validator/")
-            except TypeError:
-                self._sub_ids = None #when using standalone modules
-                self._data_dir = None
-        else:
-            self.is_multiple = True
-            if not sub_id:
-                self._sub_ids = 0 #if all subjects are to be processed
-            else:
-                self._sub_ids = sub_id
+    def set_bids(self,include,exclude):
 
-    def set_multi_echo(self,layout):
-        if "echo" not in layout.get_entities():
-            self.is_multi_echo = False
+        if exclude is not None:
+            parsestr = "|".join(exclude)
+        elif include is not None:
+            parsestr = "|".join(include)
         else:
-            self.is_multi_echo = True
+            parsestr = None
+
+        if parsestr is not None:
+            patterns = ""
+            for i in range(len(parsestr)):
+                if parsestr[i] in "sS":
+                    patterns += ".*sub-"
+                elif parsestr[i] in "rR":
+                    patterns += ".*run-"
+                elif parsestr[i] in "eE":
+                    patterns += ".*echo-"
+                elif parsestr[i] in "0123456789":
+                    if i < len(parsestr)-1:
+                        if parsestr[i+1] not in "0123456789":
+                            if parsestr[i-1] in "0123456789":
+                                patterns += parsestr[i-1:i+1]
+                            elif parsestr[i] is "0":
+                                    ".*".join(patterns.split(".*")[:-1]) 
+                            else:
+                                patterns += parsestr[i].zfill(2)
+                    elif parsestr[i-1] in "0123456789":
+                        patterns += parsestr[i-1:i+1] + ".*"
+                    elif parsestr[i] not in "123456789":
+                        ".*".join(patterns.split(".*")[:-1]) +".*"
+                    else:
+                        patterns += parsestr[i].zfill(2) + ".*"
+                   
+        print(patterns)
+        ignore = []
+        for root, _, files in os.walk(self._data_dir):
+            for file in files:
+                if exclude is not None and re.match(patterns,file):
+                    ignore.append(os.path.join(root,file))
+                elif include is not None and not re.match(patterns,file):
+                    ignore.append(os.path.join(root,file))
+
+        self.BIDS_layout = BIDSLayout(self._data_dir, derivatives=True,ignore=ignore)   
 
     def get_data_dir(self):
         return self._data_dir
@@ -261,15 +287,12 @@ if __name__ == "__main__":
     #delete any preprocessing files not supposed to be there
     for root,_,files in os.walk(pre._output_dir):
         for file in files:
-            if ".nii.gz" in file or ".mat" in file:
+            if ".nii.gz" in file or ".mat" in file or ".1D" in file:
                 filepath = os.path.join(root,file)
                 os.remove(filepath)
 
     #getting all the subjects into place
-    if [pre._sub_ids == 0] :
         sub_ids = pre.BIDS_layout.get_subjects()
-    else :
-        sub_ids = pre._sub_ids
 
     #Main preprocessing pipeline: uses tools defined above
     for sub_id in sub_ids :
@@ -291,7 +314,6 @@ if __name__ == "__main__":
                 shutil.copy(all_fobj[i].path,pre._output_dir)
             except shutil.SameFileError:
                 print("{files} already exists in the preprocessing directory, overwriting...".format(files=all_fobj[i].filename))
-        pre.BIDS_layout = BIDSLayout(pre._data_dir, derivatives=True)
 
         # skull stripping
         if pre._is_verbose:
