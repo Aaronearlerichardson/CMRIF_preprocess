@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon July 29 11:43:54 2019
+
+@author: Aaron Earle-Richardson
+"""
+import argparse
+import os
+import re
+import nipype
+import shutil
+from bids import BIDSLayout, BIDSValidator
+from bids.layout import models
+from nipype.interfaces.fsl import BET
+import nipype.interfaces.freesurfer as freesurfer
+from nipype.interfaces import afni as afni
+
+def get_parser(): #parses flags at onset of command
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter
+        , description=""
+        , epilog="""
+            Made by Aaron Earle-Richardson (ame224@cornell.edu)
+            """)
+
+    parser.add_argument(
+        "-i"
+        , "--input_dir"
+        , required=False
+        , default=None
+        , help="Input data directory(ies), Default: current directory"
+        )
+    
+    parser.add_argument(
+        "-verb"
+        , "--verbose"
+        , required=False
+        , action='store_true' 
+        , help="JSON configuration file (see example/config.json)",
+        )
+    
+    parser.add_argument(
+        "-o"
+        , "--output_dir"
+        , required=False
+        , default=None
+        , help="Output BIDS directory, Default: Inside current directory "
+        )
+    
+    parser.add_argument(
+        "-s"
+        ,"--sub_ids"
+        , nargs='*'
+        , type=int
+        , required=False
+        , help="""
+        subject numbers you wish to analyze, if flag is not called then it is assumed that 
+        the input directory includes the subject. If not, then all subjects are run, assuming BIDS format is followed
+        
+        """
+    )
+
+    return(parser)
+
+class Preprocessing():
+    def __init__(self, input_dir=None, output_dir=None, multi_echo=None, sub_ids=None, verbose=False): #sets the .self globalization for self variables
+        self._input_dir = None
+        self._output_dir = None
+
+        self.set_data_dir(input_dir)
+        self.set_out_dir(output_dir)
+        self.set_sub_ids(sub_ids)
+        self.set_verbosity(verbose)
+        if self._data_dir is not None:
+            self.BIDS_layout = BIDSLayout(self._data_dir, derivatives=True)
+        self.set_multi_echo(self.BIDS_layout)
+
+    def set_verbosity(self,verbosity):
+        if verbosity:
+            self._is_verbose = True
+        else:
+            self._is_verbose = False
+
+    def set_sub_ids(self,sub_id):
+        if sub_id is None and not os.path.isfile(self._data_dir + '/dataset_description.json'):
+            self.is_multiple = False
+            try:
+                self._sub_ids = int(re.search("sub-([0-9]{2})", self._data_dir))
+            except AssertionError:
+                raise AssertionError("Preprocessing failed, is your data up to the BIDS standard?"+
+             "You can check compatability using this link: http://bids-standard.github.io/bids-validator/")
+            except TypeError:
+                self._sub_ids = None #when using standalone modules
+                self._data_dir = None
+        else:
+            self.is_multiple = True
+            if not sub_id:
+                self._sub_ids = 0 #if all subjects are to be processed
+            else:
+                self._sub_ids = sub_id
+
+    def set_multi_echo(self,layout):
+        if "echo" not in layout.get_entities():
+            self.is_multi_echo = False
+        else:
+            self.is_multi_echo = True
+
+    def get_data_dir(self):
+        return self._data_dir
+
+    def set_data_dir(self, data_dir): #check if input dir is listed
+        if data_dir is None:
+            self._data_dir = os.getcwd()
+        else:
+            self._data_dir = data_dir
+
+    def set_out_dir(self, output_dir):
+        if output_dir is None:
+            self._output_dir = self._data_dir + "/derivatives/preprocessing"
+        else:
+            self._output_dir = output_dir
+
+    def FuncHandler(self,fileobj,output,suffix):
+        if type(fileobj) == models.BIDSImageFile: #setting file to temp file before performing operation
+            fileobj = fileobj.path
+        elif type(fileobj) is not str:
+            raise TypeError('file inputs must be either a BIDSImageFile, pathlike string')
+        if not os.path.isabs(fileobj) or not os.path.isfile(fileobj): #checking if file exists and address is absolute
+            tempfileobj = os.path.abspath(fileobj)
+            if not os.path.isfile(tempfileobj) and self._data_dir is not None: #checking working directory for file
+                tempfileobj = os.path.join(self.BIDS_layout.root,fileobj)
+                if not os.path.isfile(tempfileobj) and self._output_dir is not None: #checiking BIDS root directory for file
+                    tempfileobj = os.path.join(self._output_dir, fileobj)
+                    if not os.path.isfile(tempfileobj):         #checking BIDS derivatives dericetory for file
+                        raise FileNotFoundError("could not find {filename} in derivatives, working, or root directory, check naming and try again".format(filename=fileobj))
+                    else:
+                        fileobj = tempfileobj
+                else:
+                    fileobj = tempfileobj
+            else:
+                fileobj = tempfileobj
+        if output == None and suffix == None:
+            output = fileobj
+            fileobj = output.split('.nii.gz')[0] + "_desc-temp.nii.gz"
+            os.replace(output,fileobj)
+        elif output == None:
+            output = fileobj.split('.nii.gz')[0] + "_desc-" + suffix + '.nii.gz'
+        elif suffix == None:
+            pass
+        else:
+            print("both suffix and output filename detected as input, using filename given")
+        return(fileobj,output)
+            
+
+
+    ### These are the standalone tools, useable on their own and customiseable for alternate preprocessing algorithms.
+    # it is recommended that you not edit anything above this line (excluding package imports) without a serious knowledge of python and this script 
+
+    #cortical reconstruction
+    def cortical_recon(self,filepath=None):
+        if filepath == None:
+            filepath = self._data_dir
+        freesurfer.ReconAll(filepath)
+
+    def skullstrip(self,fileobj=None,out_file=None,args=None,suffix=None):
+
+        #setting files
+        fileobj, out_file = self.FuncHandler(fileobj,out_file,suffix=suffix)
+
+        args_in = "" #add in terminal flags here (ex: "-overwrite") if you want them called with ubiquity
+                    #accross the whole script any time this command is called. Otherwise add flags the the "args" argument of the command
+        if args is not None:
+            args_in = args_in + args
+        #running skull stripping (change this to change skull stripping program)
+        BET(in_file=fileobj,out_file=out_file,args=args_in).run()
+
+        #remove temp files
+        if type(fileobj) == models.BIDSImageFile:
+            fileobj = os.path.join(self._output_dir,fileobj.filename)
+        if "_desc-temp" in fileobj:
+            os.remove(fileobj)
+
+    def despike(self,fileobj=None,out_file=None,args=None,suffix=None):
+
+        #setting files
+        fileobj, out_file = self.FuncHandler(fileobj,out_file,suffix=suffix)
+        args_in = "-overwrite" #add in terminal flags here (ex: "-overwrite") if you want them called with ubiquity
+                    #accross the whole script any time this command is called. Otherwise add flags the the "args" argument of the command
+        if args is not None:
+            args_in = args_in + args
+
+        afni.Despike(in_file=fileobj,out_file=out_file,args=args_in).run()
+
+        #remove temp files
+        if type(fileobj) == models.BIDSImageFile:
+            fileobj = os.path.join(self._output_dir,fileobj.filename)
+        if "_desc-temp" in fileobj:
+            os.remove(fileobj)
+
+    def warp(self,fileobj1=None,fileobj2=None,out_file=None,transformation=None,args=None,saved_mat_file=None,suffix=None):
+
+        #setting files
+        fileobj1, out_file = self.FuncHandler(fileobj1,out_file,suffix=None)
+    
+        ThreeDWarp = afni.Warp(in_file=fileobj1,out_file=out_file)
+        if args is not None:
+            ThreeDWarp.inputs.args=args
+        if transformation == 'card2oblique':
+            ThreeDWarp.inputs.oblique_parent = fileobj2
+        elif transformation == 'deoblique':
+            ThreeDWarp.inputs.deoblique = True
+        elif transformation == 'mni2tta':
+            ThreeDWarp.inputs.mni2tta = True
+        elif transformation == 'tta2mni':
+            ThreeDWarp.inputs.tta2mni = True
+        elif transformation == 'matrix':
+            ThreeDWarp.inputs.matparent = fileobj2
+        elif transformation == None:
+            print("Warning: no transformation input given")
+        else:
+            print("Warning: none of the transformation options given match the possible arguments. Matching arguments are card2oblique,"+
+             " deoblique, mni2tta, tta2mni, and matrix")
+
+        if saved_mat_file: #this is for if the pipline requires saving the 1D matrix tranformation information
+            print('saving matrix')
+            ThreeDWarp.inputs.verbose = True
+            ThreeDWarp.inputs.save_warp = True
+            
+        ThreeDWarp.run()
+
+        #remove temp files
+        if type(fileobj1) == models.BIDSImageFile:
+            fileobj1 = os.path.join(self._output_dir,fileobj1.filename)
+        if "_desc-temp" in fileobj1:
+            os.remove(fileobj1)
+
+    def axialize(self,fileobj=None,out_file=None,args=None,suffix=None):
+
+        fileobj, out_file = self.FuncHandler(fileobj,out_file,suffix=suffix)
+
+        args_in = "-overwrite" #add in terminal flags here (ex: "-overwrite") if you want them called with ubiquity
+                    #accross the whole script any time this command is called. Otherwise add flags the the "args" argument of the command
+        if args is not None:
+            args_in = args_in + args
+        
+        afni.Axialize(in_file=fileobj,out_file=out_file, args=args_in).run()
+
+        #remove temp files
+        if type(fileobj) == models.BIDSImageFile:
+            fileobj = os.path.join(self._output_dir,fileobj.filename)
+        if "_desc-temp" in fileobj:
+            os.remove(fileobj)
+
+   
+    
+if __name__ == "__main__":
+    args = get_parser().parse_args()
+    pre = Preprocessing(**vars(args))
+
+    #delete any preprocessing files not supposed to be there
+    for root,_,files in os.walk(pre._output_dir):
+        for file in files:
+            if ".nii.gz" in file or ".mat" in file:
+                filepath = os.path.join(root,file)
+                os.remove(filepath)
+
+    #getting all the subjects into place
+    if [pre._sub_ids == 0] :
+        sub_ids = pre.BIDS_layout.get_subjects()
+    else :
+        sub_ids = pre._sub_ids
+
+    #Main preprocessing pipeline: uses tools defined above
+    for sub_id in sub_ids :
+
+
+        #Defining which images we care about and setting the basenames
+        all_fobj = []
+        for BIDSFiles in pre.BIDS_layout.get(scope='raw',subject=sub_id,suffix='bold',extension='.nii.gz'):
+            all_fobj.append(BIDSFiles)
+
+        for BIDSFiles in pre.BIDS_layout.get(scope='raw',extension='.nii.gz',suffix='T1w',acquisition='MPRAGE', subject=sub_id):
+            all_fobj.append(BIDSFiles)
+
+        #copying those files to a new derivatives directory so we can mess with them
+        for i in range(len(all_fobj)):
+            if pre._is_verbose:
+                print("copying {filename} to preprocessing derivatives directory".format(filename=all_fobj[i].path))
+            try:
+                shutil.copy(all_fobj[i].path,pre._output_dir)
+            except shutil.SameFileError:
+                print("{files} already exists in the preprocessing directory, overwriting...".format(files=all_fobj[i].filename))
+        pre.BIDS_layout = BIDSLayout(pre._data_dir, derivatives=True)
+
+        # skull stripping
+        if pre._is_verbose:
+            print("performing skull stripping")
+        for filename in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',return_type="filename"):
+            pre.skullstrip(filename)
+
+        #Calculate and save motion and obliquity parameters, despiking first if not disabled, and separately save and mask the base volume
+        #assuming only one anatomical image
+        if pre._is_verbose:
+            print("denoising and saving motion parameters")
+        for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold', echo='01'):
+            pre.warp(fileobj1=fobj.path,
+            fileobj2=pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',acquisition='MPRAGE')[0].path, 
+            args="-newgrid 1.000000",saved_mat_file=True, transformation='card2oblique')  #saving the transformation matrix for later
+            pre.despike(os.path.join(fobj.path))
+            pre.axialize(os.path.join(fobj.path))
+
+        #print("Performing cortical reconstruction on %s" %sub_id)
+        #preprocess.cortical_recon(bids_obj)
+    #preprocess.anat()
