@@ -1,0 +1,84 @@
+{"dataFormat" : [".nii", ".nii.gz", ".gz"]
+, "compress" : true
+, "repetitionTimeInSec" : 2
+, "delayTimeInSec" : [ 0.028, 0.013, 0.026, 0.040]
+, "series" : "odd-interleaved"
+, "pulseSequenceType" : {"left" : ".*?"
+    , "right" : ".*?"
+    , "content" : [  ["Gradient Echo", "Localizer_[0-9]{1,2}"]
+                    ,["Gradient Echo", "Localizer_[0-9]{1,2}a"]
+                    ,["Gradient Echo", "Localizer_[0-9]{1,2}b"]
+                    ,["Spoiled Gradient Recalled", "ASSET_[0-9]{1,2}"]
+                    ,["Spoiled Gradient Recalled", "ASSET_[0-9]{1,2}a"],
+		     ["Gradient Echo EPI",".e[0-9]{2}."],
+                     ["Gradient Echo EPI","EPI" ],
+                     ["Gradient Echo EPI","tempAttnAudT"],
+                     ["Gradient Echo EPI","retTest"],
+                     ["Gradient Echo EPI", "fsoSubLocal"]
+                    ,["MPRAGE","MP-Rage"]
+                    ,["MPRAGE","MPRAGE"]
+                    ,["Turbo Spin Echo", "TSE"]
+                    ,["Turbo Spin Echo", "Ax"]
+]}
+, "anat": {"left" : ".*?"
+    , "right" : ".*?"
+    , "content" : [  ["inplaneT1", "Localizer"]
+                    ,["inplaneT1", "ASSET"]
+                    ,["T1w","MP-Rage"]
+                    ,["T1w","MPRAGE"]
+                    ,["T1w", "TSE"]
+                    ,["T1w", "Ax"]
+]
+    }   
+, "anat.acq":{"left" : "_?"
+            , "right" : ".*?"
+            , "content" : [["axial", "Localizer_[0-9]{1,2}"]
+                        ,["sagittal", "Localizer_[0-9]{1,2}a"]
+                        ,["coronal", "Localizer_[0-9]{1,2}b"]
+                        ,["calibrationhead", "ASSET_[0-9]{1,2}"]
+                        ,["calibrationbody", "ASSET_[0-9]{1,2}a"]
+                        ,["MPRAGE", "MPRAGE"]
+                        ,["MPRAGE", "MP-Rage"]
+                        ,["neuromelanin", "TSE"]
+                        ,["neuromelanin","Ax"]]
+}
+, "anat.ce":{"left" : "_?"
+    , "right" : ".*?"
+    , "content" : [["neuromelanin", "TSE"]
+                    ,["neuromelanin", "Ax"]
+]}
+, "func": {"left" : ".*"
+            , "right" : ".*"
+            , "content" : [   ["bold",".e[0-9]{2}."],
+                              ["bold","EPI" ],
+                              ["bold","tempAttnAudT"],
+                              ["bold","retTest"],
+                              ["bold", "fsoSubLocal"]
+
+                            ]
+            }
+, "func.task": {"left" : "_"
+            , "right" : ".*?_"
+            , "content" : [ ["taat","tempAttnAudT"],
+                            ["ret","retTest"],
+                            ["fso", "fsoSubLocal"],
+                            ["rest","Resting"]
+         ]
+            }
+, "sessLabel" : {"left" : "_"
+                , "right" : "_"
+                , "content" :   ["[0-9]{12,14}"]
+                }
+, "runIndex" : {"left" : "run"
+                , "right" : "_"
+                , "content" : ["[0-9]{2}"]
+                }
+, "partLabel" : {"left" : "sub"
+                , "right" : "."
+                , "content" : ["p?[0-9]{2}"]
+                }
+, "echo" : {"left" : "e"
+    , "right" : "."
+    , "content" : ["[0-9]{2}"]
+    }
+}
