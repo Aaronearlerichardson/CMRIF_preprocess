@@ -390,8 +390,9 @@ if __name__ == "__main__":
                 print("{files} already exists in the preprocessing directory, overwriting...".format(files=fobj.filename))
 
         #set derivatives directory
-        if sub_id is sub_ids[0]:
-            pre.BIDS_layout.add_derivatives(pre._output_dir)
+        if not sub_id is sub_ids[0]:
+            pre.set_bids(vars(args)['include'],vars(args)['exclude'])
+        pre.BIDS_layout.add_derivatives(pre._output_dir)
 
         # skull stripping
         if pre._is_verbose:
