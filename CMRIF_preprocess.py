@@ -10,6 +10,7 @@ import os
 import re
 import nipype
 import shutil
+import multiprocessing
 from bids import BIDSLayout, BIDSValidator
 from bids.layout import models
 from nipype.interfaces.fsl import BET
@@ -20,7 +21,7 @@ from nipype.interfaces import afni as afni
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter
-        , description=""
+        , description=" ex: python3 CMRIF_preprocess.py -i /media/sf_Ubuntu_files/BIDS -ex s12r17 -verb "
         , epilog="""
             Made by Aaron Earle-Richardson (ame224@cornell.edu)
             """)
@@ -57,7 +58,7 @@ def get_parser(): #parses flags at onset of command
         required=False,
         default=None,
         help="""
-        hi
+        
         """)
     group.add_argument(
         '-in',
@@ -131,7 +132,7 @@ class Preprocessing():
                 elif include is not None and not re.match(patterns,file):
                     ignore.append(os.path.join(root,file))
 
-        self.BIDS_layout = BIDSLayout(self._data_dir, derivatives=True,ignore=ignore)   
+        self.BIDS_layout = BIDSLayout(self._data_dir,ignore=ignore)   
 
     def get_data_dir(self):
         return self._data_dir
@@ -155,22 +156,11 @@ class Preprocessing():
         elif type(fileobj) is not str:
             raise TypeError('file inputs must be either a BIDSImageFile, pathlike string')
 
-        smatch = re.match("(.*\.nii(?:\.gz))(((?:\[|\{)\d+(?:\.\.\d+|)(?:\]|\})){1,2})",fileobj) #sub-brick parser similar to afni's
+        smatch = re.match(r"(.*\.nii(?:\.gz))(((?:\[|\{)\d+(?:\.\.\d+|)(?:\]|\})){1,2})",fileobj) #sub-brick parser similar to afni's
         if smatch:
-            fileobj = smatch.group(1)
-            sbmatch = re.match(".*\[(\d+)\].*",smatch.group(2))
-            brmatch = re.match(".*\{(\d+)\}.*",smatch.group(2))
-            if sbmatch:
-                sub_brick = sbmatch.group(1)
-            else:
-                sub_brick = None
-            if brmatch:
-                brick_range = brmatch.group(1)
-            else:
-                brick_range = None
-        else:
-            sub_brick = None
-            brick_range = None
+            fileobj = smatch.group(1).split(".nii.gz")[0]+"_desc-temp.nii.gz"
+            afni.TCatSubBrick(in_files=[(smatch.group(1),"'{index}'".format(index=smatch.group(2)))],out_file=fileobj).run()
+
         
         if not os.path.isabs(fileobj) or not os.path.isfile(fileobj): #checking if file exists and address is absolute
             tempfileobj = os.path.abspath(fileobj)
@@ -188,9 +178,12 @@ class Preprocessing():
                 fileobj = tempfileobj
 
         if output == None and suffix == None:
-            output = fileobj
-            fileobj = output.split('.nii.gz')[0] + "_desc-temp.nii.gz"
-            os.replace(output,fileobj)
+            if "_desc-temp" not in fileobj:
+                output = fileobj
+                fileobj = output.split('.nii.gz')[0] + "_desc-temp.nii.gz"
+                os.replace(output,fileobj)
+            else:
+                output = fileobj.replace("_desc-temp","")
         elif output == None:
             output = fileobj.split('.nii.gz')[0] + "_desc-" + suffix + '.nii.gz'
         elif suffix == None:
@@ -248,14 +241,15 @@ class Preprocessing():
     def warp(self,fileobj1=None,fileobj2=None,out_file=None,transformation=None,args=None,saved_mat_file=None,suffix=None):
 
         #setting files
-        fileobj1, out_file = self.FuncHandler(fileobj1,out_file,suffix=None)
+        if fileobj2 is not None:
+            fileobj2, _ = self.FuncHandler(fileobj2,out_file,suffix)
+        fileobj1, out_file = self.FuncHandler(fileobj1,out_file,suffix)
     
         ThreeDWarp = afni.Warp(in_file=fileobj1,out_file=out_file)
         if args is not None:
             ThreeDWarp.inputs.args=args
         if transformation == 'card2oblique':
             ThreeDWarp.inputs.oblique_parent = fileobj2
-            
         elif transformation == 'deoblique':
             ThreeDWarp.inputs.deoblique = True
         elif transformation == 'mni2tta':
@@ -269,6 +263,7 @@ class Preprocessing():
         else:
             print("Warning: none of the transformation options given match the possible arguments. Matching arguments are card2oblique,"+
              " deoblique, mni2tta, tta2mni, and matrix")
+        ThreeDWarp.inputs.num_threads = multiprocessing.cpu_count()
 
         if saved_mat_file: #this is for if the pipline requires saving the 1D matrix tranformation information
             print('saving matrix')
@@ -300,11 +295,64 @@ class Preprocessing():
         if "_desc-temp" in fileobj:
             os.remove(fileobj)
 
-    def volreg(self,in_file=None,out_file=None,suffix=None,base=None,tshift=None,interpolation=None):
+    def volreg(self,in_file,out_file=None,suffix=None,base=None,tshift=False,interpolation="heptic",onedfile=None,onedmat=None):
 
         in_file, out_file = self.FuncHandler(in_file,out_file,suffix=suffix)
+        myreg = afni.Volreg(in_file=in_file,out_file=out_file)
+        if base is not None:
+            base, _ = self.FuncHandler(base,out_file,suffix)
+            myreg.inputs.basefile = base
 
-   
+        myreg.inputs.verbose = self._is_verbose
+        myreg.inputs.timeshift = tshift
+        myreg.inputs.interp = interpolation
+        if onedfile is True:
+            myreg.inputs.oned_file = out_file.replace(".nii.gz",".1D")
+        elif onedfile is not None:
+            myreg.inputs.oned_file = onedfile
+        if onedmat is True:
+            myreg.inputs.oned_matrix_save = out_file.replace(".nii.gz","vrmat.aff12.1D")
+        elif onedmat is not None:
+            myreg.inputs.oned_matrix_save = onedmat
+        myreg.num_threads = multiprocessing.cpu_count() #should improve speed
+
+        myreg.run()
+
+        #remove temp files
+        if type(in_file) == models.BIDSImageFile:
+            in_file = os.path.join(self._output_dir,in_file.filename)
+        if "_desc-temp" in in_file:
+            os.remove(in_file)
+
+    def copy(self,in_file,out_file=None,suffix=None):
+
+        if out_file is None and suffix is None:
+            suffix = "copy"
+        in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
+        copy3d = afni.Copy()
+        copy3d.inputs.in_file = in_file
+        copy3d.inputs.out_file = out_file
+        copy3d.inputs.verbose = self._is_verbose
+        copy3d.inputs.num_threads = multiprocessing.cpu_count()
+        copy3d.run()
+
+        #remove temp files
+        if type(in_file) == models.BIDSImageFile:
+            in_file = os.path.join(self._output_dir,in_file.filename)
+        if "_desc-temp" in in_file:
+            os.remove(in_file)
+
+    def onedcat(self,in_files,out_file,sel=None):
+
+        if type(in_files) is str:
+            in_files = [in_files]
+        
+        cat = afni.Cat(in_files=in_files,out_file=out_file)
+        if sel is not None:
+            if not "'" in sel and type(sel) is str:
+                sel="'{string}'".format(string=sel)
+            cat.inputs.sel = sel
+        cat.run()
     
 if __name__ == "__main__":
     args = get_parser().parse_args()
@@ -313,12 +361,12 @@ if __name__ == "__main__":
     #delete any preprocessing files not supposed to be there
     for root,_,files in os.walk(pre._output_dir):
         for file in files:
-            if ".nii.gz" in file or ".mat" in file or ".1D" in file:
+            if ".json" not in file:
                 filepath = os.path.join(root,file)
                 os.remove(filepath)
 
     #getting all the subjects into place
-        sub_ids = pre.BIDS_layout.get_subjects()
+    sub_ids = pre.BIDS_layout.get_subjects()
 
     #Main preprocessing pipeline: uses tools defined above
     for sub_id in sub_ids :
@@ -333,20 +381,22 @@ if __name__ == "__main__":
             all_fobj.append(BIDSFiles)
 
         #copying those files to a new derivatives directory so we can mess with them
-        for i in range(len(all_fobj)):
+        for fobj in all_fobj:
             if pre._is_verbose:
-                print("copying {filename} to preprocessing derivatives directory".format(filename=all_fobj[i].path))
+                print("copying {filename} to preprocessing derivatives directory".format(filename=fobj.path))
             try:
-                shutil.copy(all_fobj[i].path,pre._output_dir)
+                shutil.copy(fobj.path,os.path.join(pre._output_dir,fobj.filename))
             except shutil.SameFileError:
-                print("{files} already exists in the preprocessing directory, overwriting...".format(files=all_fobj[i].filename))
+                print("{files} already exists in the preprocessing directory, overwriting...".format(files=fobj.filename))
+
+        #set derivatives directory
+        pre.BIDS_layout.add_derivatives(pre._output_dir)
 
         # skull stripping
         if pre._is_verbose:
             print("performing skull stripping")
         filenames = pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',return_type="filename",acquisition="MPRAGE")
         for filename in filenames:
-            print(filename)
             pre.skullstrip(filename)
             pre.warp(filename,transformation='deoblique',out_file=filename.split('.nii.gz')[0] + "_do.nii.gz")
 
@@ -361,6 +411,10 @@ if __name__ == "__main__":
                 str(fobj.get_entities()['run']).zfill(2))  #saving the transformation matrix for later
             pre.despike(fobj.path,out_file=fobj.path.split(".nii.gz")[0]+"_desc-vrA.nii.gz")
             pre.axialize(fobj.path.split(".nii.gz")[0]+"_desc-vrA.nii.gz")
+            pre.copy(fobj.path.replace(".nii.gz","_desc-vrA.nii.gz[2]"),fobj.path.replace(".nii.gz","_eBase.nii.gz"))
+            pre.volreg(fobj.path.replace(".nii.gz","_desc-vrA.nii.gz"),onedfile=True,onedmat=True)
+            pre.onedcat(fobj.path.replace(".nii.gz","_desc-vrA.1D"),os.path.join(fobj.dirname,"motion.1D"),"[0..5]{1..$}")
+
 
         #print("Performing cortical reconstruction on %s" %sub_id)
         #preprocess.cortical_recon(bids_obj)
