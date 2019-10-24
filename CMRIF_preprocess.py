@@ -121,7 +121,7 @@ class Preprocessing():
                     else:
                         patterns += parsestr[i].zfill(2) + ".*"
                    
-        print(patterns)
+        #print(patterns)
         ignore = []
         for root, _, files in os.walk(self._data_dir):
             for file in files:
@@ -148,17 +148,36 @@ class Preprocessing():
             self._output_dir = output_dir
 
     def FuncHandler(self,fileobj,output,suffix):
+
         if type(fileobj) == models.BIDSImageFile: #setting file to temp file before performing operation
             fileobj = fileobj.path
         elif type(fileobj) is not str:
             raise TypeError('file inputs must be either a BIDSImageFile, pathlike string')
+
+        smatch = re.match("(.*\.nii(?:\.gz))(((?:\[|\{)\d+(?:\.\.\d+|)(?:\]|\})){1,2})",fileobj) #sub-brick parser similar to afni's
+        if smatch:
+            fileobj = smatch.group(1)
+            sbmatch = re.match(".*\[(\d+)\].*",smatch.group(2))
+            brmatch = re.match(".*\{(\d+)\}.*",smatch.group(2))
+            if sbmatch:
+                sub_brick = sbmatch.group(1)
+            else:
+                sub_brick = None
+            if brmatch:
+                brick_range = brmatch.group(1)
+            else:
+                brick_range = None
+        else:
+            sub_brick = None
+            brick_range = None
+        
         if not os.path.isabs(fileobj) or not os.path.isfile(fileobj): #checking if file exists and address is absolute
             tempfileobj = os.path.abspath(fileobj)
             if not os.path.isfile(tempfileobj) and self._data_dir is not None: #checking working directory for file
                 tempfileobj = os.path.join(self.BIDS_layout.root,fileobj)
                 if not os.path.isfile(tempfileobj) and self._output_dir is not None: #checiking BIDS root directory for file
                     tempfileobj = os.path.join(self._output_dir, fileobj)
-                    if not os.path.isfile(tempfileobj):         #checking BIDS derivatives dericetory for file
+                    if not os.path.isfile(tempfileobj):         #checking BIDS derivatives derectory for file
                         raise FileNotFoundError("could not find {filename} in derivatives, working, or root directory, check naming and try again".format(filename=fileobj))
                     else:
                         fileobj = tempfileobj
@@ -166,6 +185,7 @@ class Preprocessing():
                     fileobj = tempfileobj
             else:
                 fileobj = tempfileobj
+
         if output == None and suffix == None:
             output = fileobj
             fileobj = output.split('.nii.gz')[0] + "_desc-temp.nii.gz"
@@ -234,6 +254,7 @@ class Preprocessing():
             ThreeDWarp.inputs.args=args
         if transformation == 'card2oblique':
             ThreeDWarp.inputs.oblique_parent = fileobj2
+            
         elif transformation == 'deoblique':
             ThreeDWarp.inputs.deoblique = True
         elif transformation == 'mni2tta':
@@ -278,6 +299,10 @@ class Preprocessing():
         if "_desc-temp" in fileobj:
             os.remove(fileobj)
 
+    def volreg(self,in_file=None,out_file=None,suffix=None,base=None,tshift=None,interpolation=None):
+
+        in_file, out_file = self.FuncHandler(in_file,out_file,suffix=suffix)
+
    
     
 if __name__ == "__main__":
@@ -318,19 +343,23 @@ if __name__ == "__main__":
         # skull stripping
         if pre._is_verbose:
             print("performing skull stripping")
-        for filename in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',return_type="filename"):
+        filenames = pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',return_type="filename",acquisition="MPRAGE")
+        for filename in filenames:
+            print(filename)
             pre.skullstrip(filename)
+            pre.warp(filename,transformation='deoblique',out_file=filename.split('.nii.gz')[0] + "_do.nii.gz")
 
         #Calculate and save motion and obliquity parameters, despiking first if not disabled, and separately save and mask the base volume
         #assuming only one anatomical image
         if pre._is_verbose:
             print("denoising and saving motion parameters")
         for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold', echo='01'):
-            pre.warp(fileobj1=fobj.path,
-            fileobj2=pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',acquisition='MPRAGE')[0].path, 
-            args="-newgrid 1.000000",saved_mat_file=True, transformation='card2oblique')  #saving the transformation matrix for later
-            pre.despike(os.path.join(fobj.path))
-            pre.axialize(os.path.join(fobj.path))
+            for anat in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',acquisition='MPRAGE'):
+                pre.warp(fileobj2=fobj.path,fileobj1=anat.path,args="-newgrid 1.000000",saved_mat_file=True, 
+                transformation='card2oblique',suffix="anat_to_s"+str(fobj.get_entities()['subject']).zfill(2)+"r"+
+                str(fobj.get_entities()['run']).zfill(2))  #saving the transformation matrix for later
+            pre.despike(fobj.path,out_file=fobj.path.split(".nii.gz")[0]+"_desc-vrA.nii.gz")
+            pre.axialize(fobj.path.split(".nii.gz")[0]+"_desc-vrA.nii.gz")
 
         #print("Performing cortical reconstruction on %s" %sub_id)
         #preprocess.cortical_recon(bids_obj)
