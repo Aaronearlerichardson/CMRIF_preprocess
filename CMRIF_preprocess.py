@@ -9,13 +9,14 @@ import argparse
 import os
 import re
 import nipype
-import shutil
-import multiprocessing
+from shutil import copy, SameFileError
+from multiprocessing import cpu_count
 from bids import BIDSLayout, BIDSValidator
 from bids.layout import models
 from nipype.interfaces.fsl import BET
 import nipype.interfaces.freesurfer as freesurfer
 from nipype.interfaces import afni as afni
+from BIDS_converter.data2bids import tree
 
 
 def get_parser(): #parses flags at onset of command
@@ -132,6 +133,9 @@ class Preprocessing():
                 elif include is not None and not re.match(patterns,file):
                     ignore.append(os.path.join(root,file))
 
+        
+
+
         self.BIDS_layout = BIDSLayout(self._data_dir,ignore=ignore)   
 
     def get_data_dir(self):
@@ -145,9 +149,14 @@ class Preprocessing():
 
     def set_out_dir(self, output_dir):
         if output_dir is None:
-            self._output_dir = self._data_dir + "/derivatives/preprocessing"
+            self._output_dir = os.path.join(self._data_dir,"derivatives/preprocessing")
+            if not os.path.isdir(self._output_dir):
+                os.mkdir(self._output_dir) 
         else:
             self._output_dir = output_dir
+
+        if not os.path.isfile(os.path.join(self._output_dir,"dataset_description.json")):
+            copy(os.path.join(self._data_dir,"dataset_description.json"),os.path.join(self._output_dir,"derivatives/preprocessing/dataset_description.json")) 
 
     def FuncHandler(self,fileobj,output,suffix):
 
@@ -263,7 +272,7 @@ class Preprocessing():
         else:
             print("Warning: none of the transformation options given match the possible arguments. Matching arguments are card2oblique,"+
              " deoblique, mni2tta, tta2mni, and matrix")
-        ThreeDWarp.inputs.num_threads = multiprocessing.cpu_count()
+        ThreeDWarp.inputs.num_threads = cpu_count()
 
         if saved_mat_file: #this is for if the pipline requires saving the 1D matrix tranformation information
             print('saving matrix')
@@ -314,7 +323,7 @@ class Preprocessing():
             myreg.inputs.oned_matrix_save = out_file.replace(".nii.gz","vrmat.aff12.1D")
         elif onedmat is not None:
             myreg.inputs.oned_matrix_save = onedmat
-        myreg.num_threads = multiprocessing.cpu_count() #should improve speed
+        myreg.num_threads = cpu_count() #should improve speed
 
         myreg.run()
 
@@ -333,7 +342,7 @@ class Preprocessing():
         copy3d.inputs.in_file = in_file
         copy3d.inputs.out_file = out_file
         copy3d.inputs.verbose = self._is_verbose
-        copy3d.inputs.num_threads = multiprocessing.cpu_count()
+        copy3d.inputs.num_threads = cpu_count()
         copy3d.run()
 
         #remove temp files
@@ -385,8 +394,8 @@ if __name__ == "__main__":
             if pre._is_verbose:
                 print("copying {filename} to preprocessing derivatives directory".format(filename=fobj.path))
             try:
-                shutil.copy(fobj.path,os.path.join(pre._output_dir,fobj.filename))
-            except shutil.SameFileError:
+                copy(fobj.path,os.path.join(pre._output_dir,fobj.filename))
+            except SameFileError:
                 print("{files} already exists in the preprocessing directory, overwriting...".format(files=fobj.filename))
 
         #set derivatives directory
@@ -404,20 +413,23 @@ if __name__ == "__main__":
 
         #Calculate and save motion and obliquity parameters, despiking first if not disabled, and separately save and mask the base volume
         #assuming only one anatomical image
+        CWD = os.getcwd()
+        os.chdir(pre._output_dir)
         if pre._is_verbose:
             print("denoising and saving motion parameters")
         for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold', echo='01'):
             for anat in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',acquisition='MPRAGE'):
-                pre.warp(fileobj2=fobj.path,fileobj1=anat.path,args="-newgrid 1.000000",saved_mat_file=True, 
-                transformation='card2oblique',suffix="anat_to_s"+str(fobj.get_entities()['subject']).zfill(2)+"r"+
-                str(fobj.get_entities()['run']).zfill(2))  #saving the transformation matrix for later
+                pre.warp(fileobj2=fobj.path,fileobj1=anat.path,args="-newgrid 1.000000",saved_mat_file=True, transformation='card2oblique',
+                suffix="anat_to_s"+str(fobj.get_entities()['subject']).zfill(2)+"r"+str(fobj.get_entities()['run']).zfill(2))  #saving the transformation matrix for later
             pre.despike(fobj.path,out_file=fobj.path.split(".nii.gz")[0]+"_desc-vrA.nii.gz")
             pre.axialize(fobj.path.split(".nii.gz")[0]+"_desc-vrA.nii.gz")
             pre.copy(fobj.path.replace(".nii.gz","_desc-vrA.nii.gz[2]"),fobj.path.replace(".nii.gz","_eBase.nii.gz"))
             pre.volreg(fobj.path.replace(".nii.gz","_desc-vrA.nii.gz"),onedfile=True,onedmat=True)
             pre.onedcat(fobj.path.replace(".nii.gz","_desc-vrA.1D"),os.path.join(fobj.dirname,"motion.1D"),"[0..5]{1..$}")
 
-
+        os.chdir(CWD)
         #print("Performing cortical reconstruction on %s" %sub_id)
         #preprocess.cortical_recon(bids_obj)
     #preprocess.anat()
+    if pre._is_verbose:
+        tree(pre.BIDS_layout.root)

@@ -11,9 +11,9 @@ TSV_DIR="/media/sf_Ubuntu_files/sourcedata/nifti-1/timing_files" #on server: \\1
 
 README_DIR="/media/sf_Ubuntu_files/sourcedata/nifti-1/readme_files" #on server: \\132.236.250.219\fMRI\projects\tempAttnAudT
 
-BIDS_DIR="/media/sf_Ubuntu_files/Workspace/BIDS"
+BIDS_DIR="/media/sf_Ubuntu_files/BIDS"
 
-SUB_IDS=(1717) 
+SUB_IDS=(1717 1846) 
 
 #declare -l mylist[30]
 
@@ -82,7 +82,7 @@ for SUB_ID in ${SUB_IDS[@]}
 
     cd $OUTPUT_DIR
     if [[ -d "$OUTPUT_DIR/sub${SUB_NUM}/" ]] ; then
-        rm -rf $OUTPUT_DIR/sub${SUB_NUM}/
+        rm -rfd $OUTPUT_DIR/sub${SUB_NUM}/
         echo "deleting preexisting directory for subject ${SUB_NUM}"
     fi
     mkdir sub${SUB_NUM} #making a directory for dcm2bids to play and not destroy anything
@@ -184,7 +184,14 @@ for SUB_ID in ${SUB_IDS[@]}
     
 	#the big bad python code to convert the renamed files to BIDS
 	#requires numpy, nibabel, and pathlib modules
-    python data2bids.py -i $OUTPUT_DIR/sub${SUB_NUM} -c $CWD/config.json -d $DATA_DIR -o $BIDS_DIR -m ${MELIST[@]} || echo "BIDS conversion for $SUB_ID failed, trying next subject" && continue
+    python3 data2bids.py -i $OUTPUT_DIR/sub${SUB_NUM} -c $CWD/config.json -d $DATA_DIR -o $BIDS_DIR -m ${MELIST[@]} || { echo "BIDS conversion for $SUB_ID failed, trying next subject" ; continue; }
+
+    # preprocess the BIDS formatted subject
+    # requires pybids, nipype, 
+    cd .. 
+    python3 CMRIF_preprocess.py -i $BIDS_DIR -in s${SUB_NUM} -verb || { echo "preprocessing for $SUB_ID failed, trying next subject" ; cd $CWD; continue; }
+    cd $CWD
+
 
     RAN_SUBS+=${SUB_ID}" "
     echo "subjects ran: $RAN_SUBS"

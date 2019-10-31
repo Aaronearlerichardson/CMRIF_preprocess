@@ -361,10 +361,30 @@ class Data2Bids(): #main conversion and file organization program
                         InStackPositionNumber += 1
                     InstanceNumber += 1
                 return(timings,echo,ScanningSequence, SequenceVariant, SequenceOptions, SequenceName) 
-    def set_default(obj):
+
+    def set_default(self, obj):
         if isinstance(obj, set):
             return list(obj)
         raise TypeError
+
+    def force_remove(self, func, mypath, excinfo):
+
+        if os.path.isfile(mypath):
+            os.remove(mypath)
+        try:
+            if os.path.isdir(mypath):
+                self.delete_folder(Path(mypath))
+        except OSError:
+            shutil.rmtree(mypath,ignore_errors=True)
+        func(mypath)
+
+    def delete_folder(self, pth):
+        for sub in pth.iterdir() :
+            if sub.is_dir() :
+                self.delete_folder(sub)
+            else :
+                sub.unlink()
+        pth.rmdir()
 
     def run(self):
 
@@ -481,6 +501,7 @@ class Data2Bids(): #main conversion and file organization program
                                 print("Cannot update %s" %(dst_file_path + new_name + ".json"))
                         elif any(re.search(".nii",filelist) for filelist in files):
                             files.append(src_file_path)
+                            part_match = ""
                         continue
                     elif re.match(".*?" + "EADME.txt", file): 
                         with open(src_file_path, 'r') as readmetext:
@@ -531,15 +552,19 @@ class Data2Bids(): #main conversion and file organization program
                         print("Warning : Skipping %s" %src_file_path)
                         continue
                     print("trying %s" %src_file_path)
-                    # Matching the participant label
+                    
+                    # Matching the participant label to determine if there exists therein delete previously created BIDS subject files
                     try:
                         part_match = self.match_regexp(self._config["partLabel"], file)
                         if os.path.exists(self._bids_dir + "/sub-" + part_match) and not any("sub-" + part_match in x for x in names_list):
                             print("Deleting old BIDS directory for subject %s" %part_match)
-                            shutil.rmtree(self._bids_dir + "/sub-" + part_match)
+                            shutil.rmtree(self._bids_dir + "/sub-" + part_match,onerror=self.force_remove)
                     except AssertionError:
                         print("No participant found for %s" %src_file_path)
                         continue
+                    except OSError: #problem spot, may miss deleting some files causing them to erroneously carry over
+                        shutil.rmtree(self._bids_dir + "/sub-" + part_match,ignore_errors=True) 
+                
                     try:
                         (new_name,dst_file_path,_,
                          _,echo_match,sess_match,_,
