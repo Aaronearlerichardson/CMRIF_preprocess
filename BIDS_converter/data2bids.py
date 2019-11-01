@@ -64,11 +64,19 @@ def get_parser(): #parses flags at onset of command
         , help="indicator of multi-echo dataset",
         )
 
+    parser.add_argument(
+        "-verb"
+        , "--verbose"
+        , required=False
+        , action='store_true' 
+        , help="JSON configuration file (see example/config.json)",
+        )
+
     return(parser)
 
 class Data2Bids(): #main conversion and file organization program
 
-    def __init__(self, input_dir=None, config=None, output_dir=None, DICOM_path=None, multi_echo=None): #sets the .self globalization for self variables
+    def __init__(self, input_dir=None, config=None, output_dir=None, DICOM_path=None, multi_echo=None, verbose=False): #sets the .self globalization for self variables
         self._input_dir = None
         self._config_path = None
         self._config = None
@@ -81,6 +89,10 @@ class Data2Bids(): #main conversion and file organization program
         self.set_bids_dir(output_dir)
         self.set_multi_echo(multi_echo)
         self.set_DICOM_path(DICOM_path)
+        self.set_verbosity(verbose)
+
+    def set_verbosity(self,verbose):
+        self._is_verbose = verbose
 
     def set_multi_echo(self,multi_echo): #if -m flag is called
         if multi_echo is None:
@@ -551,7 +563,8 @@ class Data2Bids(): #main conversion and file organization program
                     elif not any(re.match(".*?" + ext, file) for ext in curr_ext):
                         print("Warning : Skipping %s" %src_file_path)
                         continue
-                    print("trying %s" %src_file_path)
+                    if self._is_verbose:
+                        print("trying %s" %src_file_path)
                     
                     # Matching the participant label to determine if there exists therein delete previously created BIDS subject files
                     try:
@@ -736,7 +749,8 @@ class Data2Bids(): #main conversion and file organization program
                                     tsv_writer.writerow([fields[j][i-1], duration, categories[j][i-1]])#,TRfields[j][i-1]])
                     
             # Output
-            tree(self._bids_dir)
+            if self._is_verbose:
+                tree(self._bids_dir)
 
             # Finally, we check with bids_validator if everything went alright (This wont work)
             #self.bids_validator()

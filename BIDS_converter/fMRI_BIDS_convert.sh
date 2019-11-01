@@ -13,7 +13,7 @@ README_DIR="/media/sf_Ubuntu_files/sourcedata/nifti-1/readme_files" #on server: 
 
 BIDS_DIR="/media/sf_Ubuntu_files/BIDS"
 
-SUB_IDS=(1717 1846) 
+SUB_IDS=(1846) 
 
 #declare -l mylist[30]
 

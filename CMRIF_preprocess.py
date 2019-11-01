@@ -362,6 +362,14 @@ class Preprocessing():
                 sel="'{string}'".format(string=sel)
             cat.inputs.sel = sel
         cat.run()
+
+    def tshift(self,in_file=None,out_file=None, suffix=None, interp="heptic"):
+
+        in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
+
+        afni.TShift(in_file=in_file, out_file=out_file, interp=interp).run()
+
+
     
 if __name__ == "__main__":
     args = get_parser().parse_args()
@@ -428,6 +436,13 @@ if __name__ == "__main__":
             pre.onedcat(fobj.path.replace(".nii.gz","_desc-vrA.1D"),os.path.join(fobj.dirname,"motion.1D"),"[0..5]{1..$}")
 
         os.chdir(CWD)
+
+        #
+        if pre._is_verbose:
+            print("Starting preprocessing of functional datasets")
+        for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold'):
+            pre.despike(fobj.path, fobj.path.replace(".nii.gz","desc-pt.nii.gz"))
+            pre.tshift(fobj.path.replace(".nii.gz","desc-pt.nii.gz"), fobj.path.replace("pt","ts+orig"),interp="heptic")
         #print("Performing cortical reconstruction on %s" %sub_id)
         #preprocess.cortical_recon(bids_obj)
     #preprocess.anat()
