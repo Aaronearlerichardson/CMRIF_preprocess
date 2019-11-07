@@ -19,6 +19,15 @@ SUB_IDS=(1846)
 
 for SUB_ID in ${SUB_IDS[@]}
  do 
+    if [[ $(hostname -d) == "us-east-2.compute.internal" ]]; then
+        if [[ -d $ORIG_DATA_DIR/$SUB_ID ]] ; then
+            rm -rf $ORIG_DATA_DIR/$SUB_ID
+        fi
+        cur_dir = $CWD
+        cd ..
+        python3 s3_ebs.py -l $ORIG_DATA_DIR -s "RAW/$SUB_ID" -b "amplab-master" --download
+        cd cur_dir
+    fi
     MELIST=()
     DATA_DIR=($ORIG_DATA_DIR/$SUB_ID) #input directory
 

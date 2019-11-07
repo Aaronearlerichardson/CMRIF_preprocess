@@ -74,7 +74,7 @@ def get_parser(): #parses flags at onset of command
     return(parser)
 
 class Preprocessing():
-    def __init__(self, input_dir=None, output_dir=None, multi_echo=None, include=None, exclude=None, verbose=False): #sets the .self globalization for self variables
+    def __init__(self, input_dir=None, output_dir=None, include=None, exclude=None, verbose=False): #sets the .self globalization for self variables
         self._input_dir = None
         self._output_dir = None
 
@@ -166,9 +166,13 @@ class Preprocessing():
             raise TypeError('file inputs must be either a BIDSImageFile, pathlike string')
 
         smatch = re.match(r"(.*\.nii(?:\.gz))(((?:\[|\{)\d+(?:\.\.\d+|)(?:\]|\})){1,2})",fileobj) #sub-brick parser similar to afni's
+        dmatch = re.match(r"(.*\.1D)(((?:\[|\{)\d+(?:\.\.\d+|)(?:\]|\})){1,2})",fileobj)
         if smatch:
             fileobj = smatch.group(1).split(".nii.gz")[0]+"_desc-temp.nii.gz"
             afni.TCatSubBrick(in_files=[(smatch.group(1),"'{index}'".format(index=smatch.group(2)))],out_file=fileobj).run()
+        elif dmatch:
+            fileobj = dmatch.group(1).split(".nii.gz")[0]+"_desc-temp.nii.gz"
+            afni.Cat(in_files=[dmatch.group(1)],sel="'{index}'".format(index=dmatch.group(2)),out_file=fileobj).run()
 
         
         if not os.path.isabs(fileobj) or not os.path.isfile(fileobj): #checking if file exists and address is absolute
@@ -320,7 +324,7 @@ class Preprocessing():
         elif onedfile is not None:
             myreg.inputs.oned_file = onedfile
         if onedmat is True:
-            myreg.inputs.oned_matrix_save = out_file.replace(".nii.gz","vrmat.aff12.1D")
+            myreg.inputs.oned_matrix_save = out_file.replace("vrA.nii.gz","vrmat.aff12.1D")
         elif onedmat is not None:
             myreg.inputs.oned_matrix_save = onedmat
         myreg.num_threads = cpu_count() #should improve speed
@@ -364,12 +368,69 @@ class Preprocessing():
         cat.run()
 
     def tshift(self,in_file=None,out_file=None, suffix=None, interp="heptic"):
+        
+        mycwd = os.getcwd()
+        os.chdir(self._output_dir)
+        in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
+        #out_file = out_file.replace(".nii.gz","")
+        mytshift = afni.TShift(in_file=in_file, interp=interp,outputtype='NIFTI_GZ')
+        #mytshift.inputs.args = "-prefix %s & %s " % (out_file, out_file.) 
+        mytshift.run()
+        os.rename(in_file.replace(".nii.gz","_tshift.nii.gz"),out_file)
+        os.chdir(mycwd)
+
+        self.refit(in_file=out_file,args="-view orig")
+
+        if type(in_file) == models.BIDSImageFile:
+            in_file = os.path.join(self._output_dir,in_file.filename)
+        if "_desc-temp" in in_file:
+            os.remove(in_file)
+
+    def refit(self,in_file,out_file=None,deoblique=False,args=""):
+
+        myfit = afni.Refit(in_file=in_file)
+        myfit.inputs.deoblique = deoblique
+        myfit.inputs.args = args
+        myfit.run()
+
+        if type(in_file) == models.BIDSImageFile:
+            in_file = os.path.join(self._output_dir,in_file.filename)
+        if "_desc-temp" in in_file:
+            os.remove(in_file)
+
+    def allineate(self,in_file,out_file=None,suffix=None,final="nearestneighbor",mat=None,base=None,args=""):
 
         in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
 
-        afni.TShift(in_file=in_file, out_file=out_file, interp=interp).run()
+        myalline = afni.Allineate(in_file=in_file,out_file=out_file)
+        myalline.inputs.args = args
+        myalline.inputs.num_threads = cpu_count()
+        if mat is not None:
+            mat , _ = self.FuncHandler(mat,out_file,suffix)
+            myalline.inputs.in_matrix = mat
+        if base is not None:
+            myalline.inputs.reference = base
+        myalline.run()
 
+        if type(in_file) == models.BIDSImageFile:
+            in_file = os.path.join(self._output_dir,in_file.filename)
+        if "_desc-temp" in in_file:
+            os.remove(in_file)
+    #myalline.inputs.final_interpolation = final
+    #myalline.inputs.float_out = float_out
 
+    def zcat(self,in_file,out_file=None,suffix=None,args=""):
+
+        in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
+
+        myzcat = afni.Zcat(in_file=in_file,out_file=out_file)
+        myzcat.inputs.args = args
+        myzcat.run()
+
+        if type(in_file) == models.BIDSImageFile:
+            in_file = os.path.join(self._output_dir,in_file.filename)
+        if "_desc-temp" in in_file:
+            os.remove(in_file)
     
 if __name__ == "__main__":
     args = get_parser().parse_args()
@@ -418,33 +479,50 @@ if __name__ == "__main__":
         for filename in filenames:
             pre.skullstrip(filename)
             pre.warp(filename,transformation='deoblique',out_file=filename.split('.nii.gz')[0] + "_do.nii.gz")
-
+        
         #Calculate and save motion and obliquity parameters, despiking first if not disabled, and separately save and mask the base volume
         #assuming only one anatomical image
-        CWD = os.getcwd()
-        os.chdir(pre._output_dir)
-        if pre._is_verbose:
-            print("denoising and saving motion parameters")
-        for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold', echo='01'):
-            for anat in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',acquisition='MPRAGE'):
-                pre.warp(fileobj2=fobj.path,fileobj1=anat.path,args="-newgrid 1.000000",saved_mat_file=True, transformation='card2oblique',
-                suffix="anat_to_s"+str(fobj.get_entities()['subject']).zfill(2)+"r"+str(fobj.get_entities()['run']).zfill(2))  #saving the transformation matrix for later
-            pre.despike(fobj.path,out_file=fobj.path.split(".nii.gz")[0]+"_desc-vrA.nii.gz")
-            pre.axialize(fobj.path.split(".nii.gz")[0]+"_desc-vrA.nii.gz")
-            pre.copy(fobj.path.replace(".nii.gz","_desc-vrA.nii.gz[2]"),fobj.path.replace(".nii.gz","_eBase.nii.gz"))
-            pre.volreg(fobj.path.replace(".nii.gz","_desc-vrA.nii.gz"),onedfile=True,onedmat=True)
-            pre.onedcat(fobj.path.replace(".nii.gz","_desc-vrA.1D"),os.path.join(fobj.dirname,"motion.1D"),"[0..5]{1..$}")
+        
+        for run in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',target='run',return_type='id'):
 
-        os.chdir(CWD)
+            CWD = os.getcwd()
+            os.chdir(pre._output_dir)
+            if pre._is_verbose:
+                print("denoising and saving motion parameters")
+            for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold', echo='01',run=run):
+                for anat in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',acquisition='MPRAGE'):
+                    pre.warp(fileobj2=fobj.path,fileobj1=anat.path,args="-newgrid 1.000000",saved_mat_file=True, transformation='card2oblique',
+                    suffix="anat_to_s"+str(fobj.get_entities()['subject']).zfill(2)+"r"+str(fobj.get_entities()['run']).zfill(2))  #saving the transformation matrix for later
+                no_echo = re.sub(r"echo-[0-9]{2}_bold","bold",fobj.path.replace(".nii.gz","_desc-vrA.nii.gz"))
+                pre.despike(fobj.path,out_file=no_echo)
+                pre.axialize(no_echo)
+                pre.copy(no_echo + "[2]",no_echo.replace("_desc-vrA.nii.gz","_eBase.nii.gz"))
+                pre.volreg(no_echo,base=no_echo.replace("_desc-vrA.nii.gz","_eBase.nii.gz"),interpolation='heptic',
+                    onedfile=True,onedmat=no_echo.replace("vrA.nii.gz","vrmat.aff12.1D"))
+                pre.onedcat(no_echo.replace(".nii.gz",".1D"),os.path.join(fobj.dirname,"sub-{sub}_run-{run}_motion.1D".format(
+                    sub=str(fobj.get_entities()['subject']).zfill(2),run=str(fobj.get_entities()['run']).zfill(2))),"[0..5]{1..$}")
 
-        #
-        if pre._is_verbose:
-            print("Starting preprocessing of functional datasets")
-        for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold'):
-            pre.despike(fobj.path, fobj.path.replace(".nii.gz","desc-pt.nii.gz"))
-            pre.tshift(fobj.path.replace(".nii.gz","desc-pt.nii.gz"), fobj.path.replace("pt","ts+orig"),interp="heptic")
-        #print("Performing cortical reconstruction on %s" %sub_id)
-        #preprocess.cortical_recon(bids_obj)
-    #preprocess.anat()
+            os.chdir(CWD)
+            
+            #
+            if pre._is_verbose:
+                print("Starting preprocessing of functional datasets")
+            for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',run=run):
+                pre.despike(fobj.path, fobj.path.replace(".nii.gz","_desc-pt.nii.gz"))
+                pre.tshift(fobj.path.replace(".nii.gz","_desc-pt.nii.gz"), fobj.path.replace(".nii.gz","_desc-ts.nii.gz"),interp="heptic")
+                pre.axialize(fobj.path.replace(".nii.gz","_desc-ts.nii.gz"))
+                pre.refit(fobj.path.replace(".nii.gz","_desc-ts.nii.gz"),deoblique=True,args="-TR 2.5")
+            #print("Performing cortical reconstruction on %s" %sub_id)
+            #preprocess.cortical_recon(bids_obj)
+
+            if pre._is_verbose:
+                print("Prepare T2* and S0 volumes for use in functional masking and (optionally) anatomical-functional coregistration (takes a little while).")
+            for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',run=run):
+                no_echo = re.sub(r"echo-[0-9]{2}_bold","bold",fobj.path.replace(".nii.gz","_desc-vrA.nii.gz"))
+                pre.allineate(fobj.path.replace(".nii.gz","_desc-ts.nii.gz[2..22]"),fobj.path.replace(".nii.gz","_desc-e{s}_vrA.nii.gz".format(s=str(fobj.get_entities()['echo']).zfill(2))),
+                    mat=no_echo.replace("vrA.nii.gz","vrmat.aff12.1D{2..22}"),base=no_echo.replace("_desc-vrA.nii.gz","_eBase.nii.gz"),
+                    args="-final NN -NN -float")
+                #3dAllineate -overwrite -final NN -NN -float -1Dmatrix_apply $run.e0_vrmat.aff12.1D'{2..22}' -base eBbase.nii.gz -input e1_ts+orig'[2..22]' -prefix e1_vrA.nii.gz
+            #preprocess.anat()
     if pre._is_verbose:
         tree(pre.BIDS_layout.root)
