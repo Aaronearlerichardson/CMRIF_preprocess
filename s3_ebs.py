@@ -102,12 +102,11 @@ class Transfer():
                     dirs.append(k)
             next_token = results.get('NextContinuationToken')
 
-        #multiprocessing the download of items from s3 to ebs
-        p1 = Pool()
-        for i, _ in enumerate(p1.imap_unordered(self.enumerate_paths, dirs), 1):
-            sys.stderr.write('\rEnumerating Files: {0:%}'.format(i/len(dirs)))
-        p1.close()
-        p1.join()
+        for d in dirs:
+            dest_pathname = os.path.join(local, d)
+            if not os.path.exists(os.path.dirname(dest_pathname)):
+                os.makedirs(os.path.dirname(dest_pathname))
+
 
         p2 = Pool()
         for i, _ in enumerate(p2.imap_unordered(self.download_thread, keys), 1):
@@ -122,8 +121,7 @@ class Transfer():
 
     def download_thread(self,k):
         dest_pathname = os.path.join(self._local, k)
-        if not os.path.exists(os.path.dirname(dest_pathname)):
-            os.makedirs(os.path.dirname(dest_pathname))
+        os.makedirs(os.path.dirname(dest_pathname),exist_ok=True)
         process_name = current_process().name
         if self._is_verbose:
             print("{pid} is downloading {key} to {dir} \n".format(key=k,dir=dest_pathname,pid=process_name))
