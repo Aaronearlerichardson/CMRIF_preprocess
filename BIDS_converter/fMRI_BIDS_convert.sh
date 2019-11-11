@@ -3,15 +3,15 @@
 # requires dcm2niix and dos2unix to be installed 
 # total list of subjects:1299	1329	1351	1358	1409	1421	1437	1440	1675	1685	1669	1709	1713	1717	1722	1731	1734	1743	1752	1773	1777	1780	1846	1870	1877	1941	1996	2000	2083	2910
     
-ORIG_DATA_DIR="~/ebs" #input directory, on server: \\132.236.250.219\fMRI\RAW Backups of medata \\132.236.250.219\fMRI\projects\temp$
+ORIG_DATA_DIR="$HOME/ebs" #input directory, on server: \\132.236.250.219\fMRI\RAW Backups of medata \\132.236.250.219\fMRI\projects\temp$
 
-OUTPUT_DIR="~/ebs/nifti" #on server:
+OUTPUT_DIR="$HOME/ebs/nifti" #on server:
 
-TSV_DIR="~/timing_files" #on server: \\132.236.250.219\fMRI\projects\tempAttnAudT\analysis
+TSV_DIR="$HOME/timing_files" #on server: \\132.236.250.219\fMRI\projects\tempAttnAudT\analysis
 
-README_DIR="~/readme_files" #on server: \\132.236.250.219\fMRI\projects\tempAttnAudT
+README_DIR="$HOME/readme_files" #on server: \\132.236.250.219\fMRI\projects\tempAttnAudT
 
-BIDS_DIR="~/ebs/BIDS"
+BIDS_DIR="$HOME/ebs/BIDS"
 
 SUB_IDS=(1846) 
 
