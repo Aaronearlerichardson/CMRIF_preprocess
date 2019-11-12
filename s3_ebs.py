@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 import botocore
-from multiprocessing import Pool, current_process
+from multiprocessing import Pool, current_process, cpu_count
 
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
@@ -109,7 +109,7 @@ class Transfer():
 
 
         p2 = Pool()
-        for i, _ in enumerate(p2.imap(self.download_thread, keys), 1):
+        for i, _ in enumerate(p2.imap(self.download_thread, keys, int(len(keys)/cpu_count())), 1):
             sys.stderr.write('\rDownloading Files: {0:%}'.format(i/len(keys)))
         p2.close()
         p2.join()
