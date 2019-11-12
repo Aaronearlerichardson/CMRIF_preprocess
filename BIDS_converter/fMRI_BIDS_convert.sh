@@ -20,10 +20,9 @@ SUB_IDS=(1717)
 for SUB_ID in ${SUB_IDS[@]}
  do 
     if [ $(hostname -d) == "us-east-2.compute.internal" ] && [ ! -d $ORIG_DATA_DIR/$SUB_ID ] ; then 
-        cur_dir=$CWD
         cd ..
         python3 s3_ebs.py -l $OUTPUT_DIR -s "RAW/$SUB_ID" -b "amplab-master" --download
-        cd $cur_dir
+        cd $CWD
     fi
     MELIST=()
     DATA_DIR=($ORIG_DATA_DIR/$SUB_ID) #input directory
@@ -184,7 +183,6 @@ for SUB_ID in ${SUB_IDS[@]}
 
     #echo ${MELIST[@]}
     #activating data2bids
-
     cd $CWD
     #echo $MELIST
     

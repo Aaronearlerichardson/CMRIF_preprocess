@@ -156,7 +156,7 @@ class Preprocessing():
             self._output_dir = output_dir
 
         if not os.path.isfile(os.path.join(self._output_dir,"dataset_description.json")):
-            copy(os.path.join(self._data_dir,"dataset_description.json"),os.path.join(self._output_dir,"derivatives/preprocessing/dataset_description.json")) 
+            copy(os.path.join(self._data_dir,"dataset_description.json"),os.path.join(self._output_dir,"dataset_description.json")) 
 
     def FuncHandler(self,fileobj,output,suffix):
 

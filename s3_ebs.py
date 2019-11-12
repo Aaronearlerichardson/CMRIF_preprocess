@@ -72,13 +72,14 @@ class Transfer():
         self._is_verbose = verbose
 
 
-    def download_dir(self, prefix, local, bucket, client=boto3.client('s3')):
+    def download_dir(self, prefix, local, bucket, client=boto3.client('s3'), num_chunks=1000):
         """
         params:
         - prefix: pattern to match in s3
         - local: local path to folder in which to place files
         - bucket: s3 bucket with target contents
         - client: initialized s3 client object
+        - num_chunks: number of chunks the filedata is split up into during multiprocessing
         """
         keys = []
         dirs = []
@@ -109,16 +110,18 @@ class Transfer():
 
 
         p2 = Pool()
-        for i, _ in enumerate(p2.imap(self.download_thread, keys, int(len(keys)/cpu_count())), 1):
-            sys.stderr.write('\rDownloading Files: {0:%}'.format(i/len(keys)))
+        for i, _ in enumerate(p2.imap(self.download_thread, keys, int(len(keys)/(cpu_count()*num_chunks))), 1):
+            sys.stderr.write('\rDownloading Files: {0:.2%}'.format(i/len(keys)))
         p2.close()
         p2.join()
-
-    def enumerate_paths(self,d):
-        dest_pathname = os.path.join(self._local, d)
-        if not os.path.exists(os.path.dirname(dest_pathname)):
-            os.makedirs(os.path.dirname(dest_pathname))
-
+        '''
+    def enumerate_paths(self,i):
+        k = i.get('Key')
+        if k[-1] != '/':
+            keys.append(k)
+        else:
+            dirs.append(k)
+        '''
     def download_thread(self,k):
         dest_pathname = os.path.join(self._local, k)
         os.makedirs(os.path.dirname(dest_pathname),exist_ok=True)
