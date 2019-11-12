@@ -109,7 +109,7 @@ class Transfer():
 
 
         p2 = Pool()
-        for i, _ in enumerate(p2.imap_unordered(self.download_thread, keys), 1):
+        for i, _ in enumerate(p2.imap(self.download_thread, keys), 1):
             sys.stderr.write('\rDownloading Files: {0:%}'.format(i/len(keys)))
         p2.close()
         p2.join()
