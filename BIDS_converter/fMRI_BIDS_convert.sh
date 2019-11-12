@@ -1,4 +1,4 @@
-#
+#! /bin/bash
 # A code that automatically converts CMRIF NIFTI 1 and DICOM files into BIDS format
 # requires dcm2niix and dos2unix to be installed 
 # total list of subjects:1299	1329	1351	1358	1409	1421	1437	1440	1675	1685	1669	1709	1713	1717	1722	1731	1734	1743	1752	1773	1777	1780	1846	1870	1877	1941	1996	2000	2083	2910
@@ -25,7 +25,7 @@ for SUB_ID in ${SUB_IDS[@]}
         fi
         cur_dir=$CWD
         cd ..
-        python3 s3_ebs.py -l $ORIG_DATA_DIR -s "RAW/$SUB_ID" -b "amplab-master" --download
+        python3 s3_ebs.py -l $OUTPUT_DIR -s "RAW/$SUB_ID" -b "amplab-master" --download
         cd $cur_dir
     fi
     MELIST=()
