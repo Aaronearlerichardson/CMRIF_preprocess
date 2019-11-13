@@ -9,11 +9,12 @@ import argparse
 import os
 import re
 import nipype
+import json
 from shutil import copy, SameFileError
 from multiprocessing import cpu_count
 from bids import BIDSLayout, BIDSValidator
 from bids.layout import models
-from nipype.interfaces.fsl import BET
+import nipype.interfaces.fsl as fsl
 import nipype.interfaces.freesurfer as freesurfer
 from nipype.interfaces import afni as afni
 from BIDS_converter.data2bids import tree
@@ -151,12 +152,19 @@ class Preprocessing():
         if output_dir is None:
             self._output_dir = os.path.join(self._data_dir,"derivatives/preprocessing")
             if not os.path.isdir(self._output_dir):
-                os.mkdir(self._output_dir) 
+                os.makedirs(self._output_dir) 
         else:
             self._output_dir = output_dir
 
         if not os.path.isfile(os.path.join(self._output_dir,"dataset_description.json")):
             copy(os.path.join(self._data_dir,"dataset_description.json"),os.path.join(self._output_dir,"dataset_description.json")) 
+            with open(os.path.join(self._output_dir,"dataset_description.json"),'r') as fst:
+                data = json.load(fst)
+            with open(os.path.join(self._output_dir,"dataset_description.json"),'w') as fst:
+                entry = {}
+                entry["PipelineDescription"] = {'Name': 'preprocessing'}
+                data.update(entry)
+                json.dump(data, fst)
 
     def FuncHandler(self,fileobj,output,suffix):
 
@@ -226,7 +234,7 @@ class Preprocessing():
         if args is not None:
             args_in = args_in + args
         #running skull stripping (change this to change skull stripping program)
-        BET(in_file=fileobj,out_file=out_file,args=args_in).run()
+        fsl.BET(in_file=fileobj,out_file=out_file,args=args_in,output_type="NIFTI_GZ").run()
 
         #remove temp files
         if type(fileobj) == models.BIDSImageFile:

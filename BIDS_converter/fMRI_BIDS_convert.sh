@@ -13,9 +13,7 @@ README_DIR="$HOME/readme_files" #on server: \\132.236.250.219\fMRI\projects\temp
 
 BIDS_DIR="$HOME/ebs/BIDS"
 
-SUB_IDS=(1717) 
-
-#declare -l mylist[30]
+SUB_IDS=(1299 1846) 
 
 for SUB_ID in ${SUB_IDS[@]}
  do 
