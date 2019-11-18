@@ -189,7 +189,8 @@ class Data2Bids(): #main conversion and file organization program
                                      + delimiter_right
                                      + ".*?", filename).group(1)
                     match_found = True
-
+        #if not match_found:
+        #    raise SyntaxError("file: {filename} has no matching {config}".format(filename=filename,config=config_regexp["content"]))
         assert match_found
         return match
 
@@ -464,6 +465,8 @@ class Data2Bids(): #main conversion and file organization program
                     data_type_match = None
                     new_name = None
                     
+                    #if re.match(".*?" + "imaginary" + ".*?" ,file):
+                    #    continue
                     if re.match(".*?" + ".json", file):
                         part_match = self.match_regexp(self._config["partLabel"], file)
                         try:

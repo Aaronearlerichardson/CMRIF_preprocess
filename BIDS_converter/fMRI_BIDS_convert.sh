@@ -13,7 +13,7 @@ README_DIR="$HOME/readme_files" #on server: \\132.236.250.219\fMRI\projects\temp
 
 BIDS_DIR="$HOME/ebs/BIDS"
 
-SUB_IDS=(1299 1846) 
+SUB_IDS=(1846) 
 
 for SUB_ID in ${SUB_IDS[@]}
  do 
@@ -181,7 +181,7 @@ for SUB_ID in ${SUB_IDS[@]}
 
     #echo ${MELIST[@]}
     #activating data2bids
-    cd $CWD
+    cd $HOME/CMRIF_preprocess/BIDS_converter
     #echo $MELIST
     
 	#the big bad python code to convert the renamed files to BIDS
@@ -192,8 +192,7 @@ for SUB_ID in ${SUB_IDS[@]}
     # requires pybids, nipype, 
     cd .. 
     python3 CMRIF_preprocess.py -i $BIDS_DIR -in s${SUB_NUM} -verb || { echo "preprocessing for $SUB_ID failed, trying next subject" ; cd $CWD; continue; }
-    cd $CWD
-
+    cd $HOME/CMRIF_preprocess/BIDS_converter
 
     RAN_SUBS+=${SUB_ID}" "
     echo "subjects ran: $RAN_SUBS"
