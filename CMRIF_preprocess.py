@@ -18,7 +18,7 @@ import nipype.interfaces.fsl as fsl
 import nipype.interfaces.freesurfer as freesurfer
 from nipype.interfaces import afni as afni
 from BIDS_converter.data2bids import tree
-
+from tedana.workflows import t2smap_workflow
 
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
@@ -251,7 +251,7 @@ class Preprocessing():
         if args is not None:
             args_in = args_in + args
 
-        afni.Despike(in_file=fileobj,out_file=out_file,args=args_in).run()
+        afni.Despike(in_file=fileobj,out_file=out_file,args=args_in,num_threads=cpu_count()).run()
 
         #remove temp files
         if type(fileobj) == models.BIDSImageFile:
@@ -284,6 +284,7 @@ class Preprocessing():
         else:
             print("Warning: none of the transformation options given match the possible arguments. Matching arguments are card2oblique,"+
              " deoblique, mni2tta, tta2mni, and matrix")
+        print(cpu_count())
         ThreeDWarp.inputs.num_threads = cpu_count()
 
         if saved_mat_file: #this is for if the pipline requires saving the 1D matrix tranformation information
@@ -427,11 +428,14 @@ class Preprocessing():
     #myalline.inputs.final_interpolation = final
     #myalline.inputs.float_out = float_out
 
-    def zcat(self,in_file,out_file=None,suffix=None,args=""):
+    def zcat(self,in_files,out_file,suffix=None,args=""):
 
-        in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
+        data = []
+        for in_file in in_files:
+            x, _ = self.FuncHandler(in_file,"_",suffix)
+            data.append(x)
 
-        myzcat = afni.Zcat(in_file=in_file,out_file=out_file)
+        myzcat = afni.Zcat(in_files=data,out_file=out_file)
         myzcat.inputs.args = args
         myzcat.run()
 
@@ -510,7 +514,6 @@ if __name__ == "__main__":
                 pre.onedcat(no_echo.replace(".nii.gz",".1D"),os.path.join(fobj.dirname,"sub-{sub}_run-{run}_motion.1D".format(
                     sub=str(fobj.get_entities()['subject']).zfill(2),run=str(fobj.get_entities()['run']).zfill(2))),"[0..5]{1..$}")
 
-            os.chdir(CWD)
             
             #
             if pre._is_verbose:
@@ -525,12 +528,21 @@ if __name__ == "__main__":
 
             if pre._is_verbose:
                 print("Prepare T2* and S0 volumes for use in functional masking and (optionally) anatomical-functional coregistration (takes a little while).")
+            fobjs = []
             for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',run=run):
                 no_echo = re.sub(r"echo-[0-9]{2}_bold","bold",fobj.path.replace(".nii.gz","_desc-vrA.nii.gz"))
                 pre.allineate(fobj.path.replace(".nii.gz","_desc-ts.nii.gz[2..22]"),fobj.path.replace(".nii.gz","_desc-e{s}_vrA.nii.gz".format(s=str(fobj.get_entities()['echo']).zfill(2))),
                     mat=no_echo.replace("vrA.nii.gz","vrmat.aff12.1D{2..22}"),base=no_echo.replace("_desc-vrA.nii.gz","_eBase.nii.gz"),
                     args="-final NN -NN -float")
-                #3dAllineate -overwrite -final NN -NN -float -1Dmatrix_apply $run.e0_vrmat.aff12.1D'{2..22}' -base eBbase.nii.gz -input e1_ts+orig'[2..22]' -prefix e1_vrA.nii.gz
-            #preprocess.anat()
+                fobjs.append(fobj.path.replace(".nii.gz","_desc-e{s}_vrA.nii.gz".format(s=str(fobj.get_entities()['echo']).zfill(2))))
+            newname = os.path.join(fobj.dirname, "run-{r}_basestack.nii.gz".format(r=run))
+            print(newname)
+            pre.zcat(fobjs,newname)
+            t2smap_workflow(newname,[12.3,26,40],
+            label="run-{r}_t2".format(r=run))
+
+            if pre._is_verbose:
+                print("--------Using AFNI align_epi_anat.py to drive anatomical-functional coregistration ")
+            os.chdir(CWD)
     if pre._is_verbose:
         tree(pre.BIDS_layout.root)
