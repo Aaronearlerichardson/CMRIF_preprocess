@@ -20,6 +20,8 @@ from nipype.interfaces import afni as afni
 from BIDS_converter.data2bids import tree
 from tedana.workflows import t2smap_workflow
 
+os.environ['OMP_NUM_THREADS'] = str(cpu_count()) #tedana resets thread count on import. See https://github.com/ME-ICA/tedana/issues/473 for details
+
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -251,7 +253,7 @@ class Preprocessing():
         if args is not None:
             args_in = args_in + args
 
-        afni.Despike(in_file=fileobj,out_file=out_file,args=args_in,num_threads=cpu_count()).run()
+        afni.Despike(in_file=fileobj,out_file=out_file,args=args_in).run()
 
         #remove temp files
         if type(fileobj) == models.BIDSImageFile:
@@ -284,8 +286,7 @@ class Preprocessing():
         else:
             print("Warning: none of the transformation options given match the possible arguments. Matching arguments are card2oblique,"+
              " deoblique, mni2tta, tta2mni, and matrix")
-        print(cpu_count())
-        ThreeDWarp.inputs.num_threads = cpu_count()
+        #ThreeDWarp.inputs.num_threads = cpu_count()
 
         if saved_mat_file: #this is for if the pipline requires saving the 1D matrix tranformation information
             print('saving matrix')
@@ -336,7 +337,7 @@ class Preprocessing():
             myreg.inputs.oned_matrix_save = out_file.replace("vrA.nii.gz","vrmat.aff12.1D")
         elif onedmat is not None:
             myreg.inputs.oned_matrix_save = onedmat
-        myreg.num_threads = cpu_count() #should improve speed
+        myreg.inputs.num_threads = cpu_count() #should improve speed
 
         myreg.run()
 
@@ -355,7 +356,7 @@ class Preprocessing():
         copy3d.inputs.in_file = in_file
         copy3d.inputs.out_file = out_file
         copy3d.inputs.verbose = self._is_verbose
-        copy3d.inputs.num_threads = cpu_count()
+        #copy3d.inputs.num_threads = cpu_count()
         copy3d.run()
 
         #remove temp files
@@ -413,7 +414,7 @@ class Preprocessing():
 
         myalline = afni.Allineate(in_file=in_file,out_file=out_file)
         myalline.inputs.args = args
-        myalline.inputs.num_threads = cpu_count()
+        #myalline.inputs.num_threads = cpu_count()
         if mat is not None:
             mat , _ = self.FuncHandler(mat,out_file,suffix)
             myalline.inputs.in_matrix = mat
@@ -443,6 +444,24 @@ class Preprocessing():
             in_file = os.path.join(self._output_dir,in_file.filename)
         if "_desc-temp" in in_file:
             os.remove(in_file)
+
+    def calc(self,in_file_a,expr,in_file_b=None,in_file_c=None,output=None,suffix=None):
+
+        in_file_a, output = self.FuncHandler(in_file_a,output,suffix)
+        in_file_b, _ = self.FuncHandler(in_file_b,output,suffix)
+        in_file_c, _ = self.FuncHandler(in_file_c,output,suffix)
+
+        mycalc = afni.Calc(in_file_a=in_file_a,in_file_b=in_file_b,expr=expr,out_file=output)
+        mycalc.inputs.outputtype = "NIFTI_GZ"
+        mycalc.inputs.num_threads = cpu_count()
+        mycalc.run()
+
+        for in_file in [in_file_a,in_file_b]:
+            if type(in_file) == models.BIDSImageFile:
+                in_file = os.path.join(self._output_dir,in_file.filename)
+            if "_desc-temp" in in_file:
+                os.remove(in_file)
+
     
 if __name__ == "__main__":
     args = get_parser().parse_args()
@@ -461,7 +480,7 @@ if __name__ == "__main__":
     #Main preprocessing pipeline: uses tools defined above
     for sub_id in sub_ids :
 
-
+        #print(os.environ)
         #Defining which images we care about and setting the basenames
         all_fobj = []
         for BIDSFiles in pre.BIDS_layout.get(scope='raw',subject=sub_id,suffix='bold',extension='.nii.gz'):
@@ -536,13 +555,12 @@ if __name__ == "__main__":
                     args="-final NN -NN -float")
                 fobjs.append(fobj.path.replace(".nii.gz","_desc-e{s}_vrA.nii.gz".format(s=str(fobj.get_entities()['echo']).zfill(2))))
             newname = os.path.join(fobj.dirname, "run-{r}_basestack.nii.gz".format(r=run))
-            print(newname)
             pre.zcat(fobjs,newname)
-            t2smap_workflow(newname,[12.3,26,40],
-            label="run-{r}_t2".format(r=run))
+            t2smap_workflow(newname,[12.3,26,40],label="run-{r}_t2".format(r=run))
 
             if pre._is_verbose:
                 print("--------Using AFNI align_epi_anat.py to drive anatomical-functional coregistration ")
+            
             os.chdir(CWD)
     if pre._is_verbose:
         tree(pre.BIDS_layout.root)
