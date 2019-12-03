@@ -12,6 +12,7 @@ import gzip
 import numpy as np
 import nibabel as nib
 import csv
+import subprocess
 from pathlib import Path
 import pydicom as dicom
 
@@ -23,12 +24,16 @@ def get_parser(): #parses flags at onset of command
             Documentation at https://github.com/SIMEXP/Data2Bids
             """)
 
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         "-i"
         , "--input_dir"
         , required=False
         , default=None
-        , help="Input data directory(ies), Default: current directory",
+        , help="""
+        Input data directory(ies), must include a readme.txt file formatted like example under examples folder. 
+        Mutually exclusive with DICOM directory option. Default: current directory
+        """,
         )
 
     parser.add_argument(
@@ -47,12 +52,12 @@ def get_parser(): #parses flags at onset of command
         , help="Output BIDS directory, Default: Inside current directory ",
         )
 
-    parser.add_argument(
+    group.add_argument(
         "-d"
         ,"--DICOM_path"
         , default=None
         , required=False
-        , help="Optional DICOM directory",
+        , help="Optional DICOM directory, Mutually exclusive with input directory option",
         )
 
     parser.add_argument(
@@ -84,11 +89,11 @@ class Data2Bids(): #main conversion and file organization program
         self._bids_version = "1.2.0"
         self._dataset_name = None
 
-        self.set_data_dir(input_dir)
+        self.set_data_dir(input_dir,DICOM_path)
         self.set_config_path(config)
         self.set_bids_dir(output_dir)
+        self.set_DICOM(DICOM_path)
         self.set_multi_echo(multi_echo)
-        self.set_DICOM_path(DICOM_path)
         self.set_verbosity(verbose)
 
     def set_verbosity(self,verbose):
@@ -104,21 +109,70 @@ class Data2Bids(): #main conversion and file organization program
             else:
                 self._multi_echo = multi_echo
 
-        self._multi_echo = multi_echo
+    def set_DICOM(self, ddir):
+        if self._data_dir is None:
+            self._data_dir = os.path.dirname(self._bids_dir)
+            subdirs = [x[0] for x in os.walk(ddir)]
+            files = [x[2] for x in os.walk(ddir)]
+            sub_num = str(dicom.read_file(os.path.join(subdirs[1],files[1][0]))[0x10, 0x20].value).split("_",1)[1]
+            sub_dir = os.path.join(os.path.dirname(self._bids_dir),"sub-{SUB_NUM}".format(SUB_NUM=sub_num)) #destination subdirectory
+            if os.path.isdir(sub_dir):
+                proc = subprocess.Popen("rm -rf {file}".format(file=sub_dir), shell=True, stdout=subprocess.PIPE)
+                proc.communicate()
+            os.mkdir(sub_dir)
 
-    def set_DICOM_path(self, ddir):
+            if any("medata" in x for x in subdirs):     #copy over and list me data
+                melist = [x[2] for x in os.walk(os.path.join(ddir,"medata"))][0]
+                runlist = []
+                for me in melist:
+                    if me.startswith("."):
+                        continue
+                    runmatch = re.match(r".*run(\d{2}).*",me).group(1)
+                    if str(int(runmatch)) not in runlist:
+                        runlist.append(str(int(runmatch)))
+                    shutil.copyfile(os.path.join(ddir,"medata",me),os.path.join(sub_dir,me))
+
+            for subdir in subdirs[1:-1]: #not including parent folder or /medata, run dcm2niix on non me data
+                fobj = dicom.read_file(os.path.join(subdir, list(os.walk(subdir))[0][2][0])) #first dicom file of the scan
+                scan_num = str(int(os.path.basename(subdir))).zfill(2)
+                firstfile = [x[2] for x in os.walk(subdir)][0][0]
+                #print(str(fobj[0x20, 0x11].value), runlist)
+                if str(fobj[0x20, 0x11].value) in runlist:
+                    proc = subprocess.Popen("dcm2niix -z y -f run{SCAN_NUM}_%p_%t_sub{SUB_NUM} -o {OUTPUT_DIR} -s y -b y {DATA_DIR}".format(
+                        OUTPUT_DIR=sub_dir, SUB_NUM=sub_num, DATA_DIR=os.path.join(subdir,firstfile), SCAN_NUM=scan_num), shell=True, stdout=subprocess.PIPE)
+                    #output = proc.stdout.read()
+                    outs, errs = proc.communicate()
+                    prefix = re.match(".*/sub-{SUB_NUM}/(run{SCAN_NUM}".format(SUB_NUM=sub_num,SCAN_NUM=scan_num) + "[^ \(\"\\n\.]*).*",
+                        str(outs)).group(1)
+                    for file in os.listdir(sub_dir):
+                        mefile = re.match("run{SCAN_NUM}(\.e\d\d)\.nii".format(SCAN_NUM=scan_num),file)
+                        if re.match("run{SCAN_NUM}\.e\d\d.nii".format(SCAN_NUM=scan_num),file):
+                            shutil.move(os.path.join(sub_dir,file),os.path.join(sub_dir,prefix + mefile.group(1) + ".nii"))
+                            shutil.copy(os.path.join(sub_dir,prefix + ".json"),os.path.join(sub_dir,prefix + mefile.group(1) + ".json"))
+                    os.remove(os.path.join(sub_dir,prefix + ".nii.gz"))
+                    os.remove(os.path.join(sub_dir,prefix + ".json"))
+                else:
+                    proc = subprocess.Popen("dcm2niix -z y -f run{SCAN_NUM}_%p_%t_sub{SUB_NUM} -o {OUTPUT_DIR} -b y {DATA_DIR}".format(
+                        OUTPUT_DIR=sub_dir, SUB_NUM=sub_num, DATA_DIR=subdir, SCAN_NUM=scan_num), shell=True, stdout=subprocess.PIPE)
+                    outs, errs = proc.communicate()
+                sys.stdout.write(outs.decode("utf-8"))
+
+            self._multi_echo = runlist
+            self._data_dir = os.path.join(os.path.dirname(self._bids_dir), "sub-{SUB_NUM}".format(SUB_NUM=sub_num))
         self._DICOM_path = ddir
 
     def get_data_dir(self):
         return self._data_dir
 
-    def set_data_dir(self, data_dir): #check if input dir is listed
-        if data_dir is None:
-            self._data_dir = os.getcwd()
+    def set_data_dir(self, data_dir,DICOM): #check if input dir is listed
+        if DICOM is None:
+            if data_dir is None:
+                self._data_dir = os.getcwd()
+            else:
+                self._data_dir = data_dir
+            self._dataset_name = os.path.basename(self._data_dir)
         else:
-            self._data_dir = data_dir
-
-        self._dataset_name = os.path.basename(self._data_dir)
+            self._data_dir = None
 
     def get_config(self):
         return self._config
@@ -157,7 +211,13 @@ class Data2Bids(): #main conversion and file organization program
             except TypeError:
                 print("Error: Please provide input data directory if no BIDS directory...")
         else:
-            self._bids_dir = bids_dir
+            newdir = os.path.join(bids_dir,"BIDS")
+            if os.path.isdir(newdir):
+                proc = subprocess.Popen("rm -rf {file}".format(file=newdir), shell=True, stdout=subprocess.PIPE)
+                proc.communicate()
+            os.mkdir(newdir)
+            bids_dir = newdir
+        self._bids_dir = bids_dir
 
     def get_bids_version(self):
         return self._bids_version
@@ -189,8 +249,6 @@ class Data2Bids(): #main conversion and file organization program
                                      + delimiter_right
                                      + ".*?", filename).group(1)
                     match_found = True
-        #if not match_found:
-        #    raise SyntaxError("file: {filename} has no matching {config}".format(filename=filename,config=config_regexp["content"]))
         assert match_found
         return match
 
@@ -464,14 +522,16 @@ class Data2Bids(): #main conversion and file organization program
                     dst_file_path = self._bids_dir
                     data_type_match = None
                     new_name = None
-                    
+
                     #if re.match(".*?" + "imaginary" + ".*?" ,file):
                     #    continue
                     if re.match(".*?" + ".json", file):
-                        part_match = self.match_regexp(self._config["partLabel"], file)
                         try:
-                            (new_name,dst_file_path, run_match,
-                             _,echo_match,sess_match,_,
+                            part_match = self.match_regexp(self._config["partLabel"], file)
+                        except AssertionError:
+                            raise SyntaxError("file: {filename} has no matching {config}".format(filename=file,config=self._config["content"][:][0]))
+                        try:
+                            (new_name,dst_file_path, run_match, _,echo_match,sess_match,_,
                              data_type_match,task_label_match,SeqType) = self.generate_names(part_match, src_file_path, file)
                         except TypeError:
                             continue
