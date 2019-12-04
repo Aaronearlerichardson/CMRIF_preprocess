@@ -132,9 +132,12 @@ class Data2Bids(): #main conversion and file organization program
                         runlist.append(str(int(runmatch)))
                     shutil.copyfile(os.path.join(ddir,"medata",me),os.path.join(sub_dir,me))
 
-            for subdir in subdirs[1:-1]: #not including parent folder or /medata, run dcm2niix on non me data
-                fobj = dicom.read_file(os.path.join(subdir, list(os.walk(subdir))[0][2][0])) #first dicom file of the scan
-                scan_num = str(int(os.path.basename(subdir))).zfill(2)
+            for subdir in subdirs[1:]: #not including parent folder or /medata, run dcm2niix on non me data
+                try:
+                    fobj = dicom.read_file(os.path.join(subdir, list(os.walk(subdir))[0][2][0]),force=True) #first dicom file of the scan
+                    scan_num = str(int(os.path.basename(subdir))).zfill(2)
+                except ValueError:
+                    continue
                 firstfile = [x[2] for x in os.walk(subdir)][0][0]
                 #print(str(fobj[0x20, 0x11].value), runlist)
                 if str(fobj[0x20, 0x11].value) in runlist:
@@ -211,7 +214,10 @@ class Data2Bids(): #main conversion and file organization program
             except TypeError:
                 print("Error: Please provide input data directory if no BIDS directory...")
         else:
-            newdir = os.path.join(bids_dir,"BIDS")
+            if not os.path.basename(os.path.normpath(bids_dir)) == "BIDS":
+                newdir = os.path.join(bids_dir,"BIDS")
+            else:
+                newdir = bids_dir
             if os.path.isdir(newdir):
                 proc = subprocess.Popen("rm -rf {file}".format(file=newdir), shell=True, stdout=subprocess.PIPE)
                 proc.communicate()
