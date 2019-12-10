@@ -467,6 +467,8 @@ if __name__ == "__main__":
     args = get_parser().parse_args()
     pre = Preprocessing(**vars(args))
 
+    echo_times = [12.3,26,40]
+
     #delete any preprocessing files not supposed to be there
     for root,_,files in os.walk(pre._output_dir):
         for file in files:
@@ -520,7 +522,12 @@ if __name__ == "__main__":
             os.chdir(pre._output_dir)
             if pre._is_verbose:
                 print("denoising and saving motion parameters")
-            for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold', echo='01',run=run):
+            for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',run=run):
+                try: #checking that image is either single echo or the first of the multi echo series
+                    if not fobj.get_entities()['echo'] == "01":
+                        continue
+                except KeyError: #handles single echo
+                    pass
                 for anat in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz',acquisition='MPRAGE'):
                     pre.warp(fileobj2=fobj.path,fileobj1=anat.path,args="-newgrid 1.000000",saved_mat_file=True, transformation='card2oblique',
                     suffix="anat_to_s"+str(fobj.get_entities()['subject']).zfill(2)+"r"+str(fobj.get_entities()['run']).zfill(2))  #saving the transformation matrix for later
@@ -550,16 +557,27 @@ if __name__ == "__main__":
             fobjs = []
             for fobj in pre.BIDS_layout.get(scope='derivatives', subject=sub_id, extension='.nii.gz', suffix='bold',run=run):
                 no_echo = re.sub(r"echo-[0-9]{2}_bold","bold",fobj.path.replace(".nii.gz","_desc-vrA.nii.gz"))
-                pre.allineate(fobj.path.replace(".nii.gz","_desc-ts.nii.gz[2..22]"),fobj.path.replace(".nii.gz","_desc-e{s}_vrA.nii.gz".format(s=str(fobj.get_entities()['echo']).zfill(2))),
+                try:
+                    assert fobj.get_entities()['echo'] 
+                    echo = str(fobj.get_entities()['echo']).zfill(2)
+                except (AssertionError, KeyError): #handled in case of single echo BOLD data
+                    echo = "00"
+                pre.allineate(fobj.path.replace(".nii.gz","_desc-ts.nii.gz[2..22]"),fobj.path.replace(".nii.gz","_desc-e{s}_vrA.nii.gz".format(s=echo)),
                     mat=no_echo.replace("vrA.nii.gz","vrmat.aff12.1D{2..22}"),base=no_echo.replace("_desc-vrA.nii.gz","_eBase.nii.gz"),
                     args="-final NN -NN -float")
-                fobjs.append(fobj.path.replace(".nii.gz","_desc-e{s}_vrA.nii.gz".format(s=str(fobj.get_entities()['echo']).zfill(2))))
+                fobjs.append(fobj.path.replace(".nii.gz","_desc-e{s}_vrA.nii.gz".format(s=echo)))
             newname = os.path.join(fobj.dirname, "run-{r}_basestack.nii.gz".format(r=run))
-            pre.zcat(fobjs,newname)
-            t2smap_workflow(newname,[12.3,26,40],label="run-{r}_t2".format(r=run))
+            if len(fobjs) >= 2: #multi echo
+                pre.zcat(fobjs,newname)
+                t2smap_workflow(newname,echo_times,label="run-{r}_t2".format(r=run))
+            elif len(fobjs) == 1: #single echo
+                newname = fobjs[0]
+            else:
+                raise FileNotFoundError
 
             if pre._is_verbose:
                 print("--------Using AFNI align_epi_anat.py to drive anatomical-functional coregistration ")
+            #pre.calc()
             
             os.chdir(CWD)
     if pre._is_verbose:
