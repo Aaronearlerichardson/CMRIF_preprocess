@@ -1,18 +1,27 @@
 # CMRIF_preprocess
-Cornell University fMRI preprocessing script and library
+This program is a centralized hub for all your MRI preprocessing needs. It has three main features: A disk image optimized for MRI computation, a script that takes DICOM or NIFTI images and organizes them into BIDS standard formatting, and finally a modular preprocessing script that uses nipype to allow you to mix and match different preprocessing packages from different software (such as using BET from FSL and AFNI's anat2epi).
 
-software required:
+# Disk Image Includes
+Software:
 Afni, Freesurfer, Fsl, Anaconda (python 3.7)
 
-python packages required: 
+Python packages: 
 boto3, pathlib, pybids, pydicom, nipype, pip
 
 Ubuntu packages:
 dcm2niix, pigz (optional)
 
-Remote host packages:
+# Host Requirements
+Linux:
 xauth
 
+Mac:
+
+# Getting Started
+
+## Starting a Server
+
+1. ![]{Images/scree
 Getting on the server via ssh:
 
 1. Find the location of your .pem key
