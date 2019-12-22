@@ -21,7 +21,7 @@ Mac:
 
 ## Starting a Server
 
-1. ![]{Images/scree
+1. ![](images/Screenshot (18).png)
 Getting on the server via ssh:
 
 1. Find the location of your .pem key
