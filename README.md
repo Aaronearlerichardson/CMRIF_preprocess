@@ -21,8 +21,26 @@ Mac:
 
 ## Starting a Server
 
-1. ![](images/Screenshot (18).png)
-Getting on the server via ssh:
+1. Once you've logged in to your Corenll AWS account, open the services tab and click on "EC2"
+
+![Once you've logged in to your Corenll AWS account, open the services tab and click on "EC2"](images/Screenshot%20(18).png)
+
+***
+
+2. Locate the "AMI" tab on the left and select it to access the Amazon Machine Image
+
+![Locate the "AMI" tab on the left and select it to access the Amazon Machine Image](images/Screenshot%20(10).png)
+
+***
+
+3. Select the image you want to start. If this is your first time or you are startign from scratch, select the "Base Image." Once selected, start the image by clicking launch in the actions tab.
+
+![Select the image you want to start. If this is your first time or you are startign from scratch, select the "Base Image." Once selected, start the image by clicking launch in the actions tab.](images/Screenshot%20(11).png)
+
+***
+
+
+## Getting on the server:
 
 1. Find the location of your .pem key
 2. Open a terminal and type in the command:
