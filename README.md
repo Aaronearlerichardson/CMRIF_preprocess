@@ -6,7 +6,7 @@ Software:
 Afni, Freesurfer, Fsl, Anaconda (python 3.7)
 
 Python packages: 
-boto3, pathlib, pybids, pydicom, nipype, pip
+boto3, pathlib, pybids, pydicom, nipype, pip, tedana
 
 Ubuntu packages:
 dcm2niix, pigz (optional)
