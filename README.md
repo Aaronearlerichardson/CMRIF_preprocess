@@ -73,7 +73,23 @@ xauth
 ## Getting on the server:
 
 1. Find the location of your .pem key
-2. Open a terminal and type in the command:
+2. Copy the Public DNS for the server to your clipboard
+
+![Copy the Public DNS for the server to your clipboard](images/Screenshot%20(19).png)
+
+3. Open a terminal and type in the command (without parenthesis):
 ```
-ssh -i absolute/path/to/SWALLOW.pem -X ubuntu@ec2-18-220-67-88.us-east-2.compute.amazonaws.com
+ssh -i (absolute/path/to)/SWALLOW.pem -X ubuntu@(paste DNS here)
 ```
+4. If it is your first time, type "yes" when asked to trust the site
+
+## Using the Server
+
+Upon logging in you should see both a copy of this repository and an "ebs" folder. That folder is the mounted EBS drive with the installed software. The repo contains three python scripts and one bash script that gives an example of how to use them. 
+
+### s3_ebs.py 
+
+This script is intended for the prupose of transferring data between the ebs and an s3 bucket. If downloading, the tool will download an s3 file which are already tar zipped. It will then unzip them for use. If uploading, the tool will tar zip and then upload the zipped file to the s3 bucket of your choice. 
+
+
+
