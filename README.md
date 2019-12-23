@@ -147,7 +147,8 @@ so that you can make BIDS compliant event files.
 Data2bids documentation at https://github.com/SIMEXP/Data2Bids
 Dcm2niix documentation at https://github.com/rordenlab/dcm2niix
 
-Arguments: ```
+Arguments: 
+```
   -h, --help            show this help message and exit
   -i INPUT_DIR, --input_dir INPUT_DIR
                         Input data directory(ies), must include a readme.txt
@@ -172,7 +173,7 @@ Arguments: ```
                         but it will not be able to tell you if there is a
                         mistake.
   -verb, --verbose      verbosity
-    ```
+```
 
 Made by Aaron Earle-Richardson (ame224@cornell.edu)
 
