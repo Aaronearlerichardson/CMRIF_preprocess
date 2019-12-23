@@ -89,7 +89,41 @@ Upon logging in you should see both a copy of this repository and an "ebs" folde
 
 ### s3_ebs.py 
 
-This script is intended for the prupose of transferring data between the ebs and an s3 bucket. If downloading, the tool will download an s3 file which are already tar zipped. It will then unzip them for use. If uploading, the tool will tar zip and then upload the zipped file to the s3 bucket of your choice. 
+usage: `s3_ebs.py [-h] (-d | -u) [-l LOCAL] [-s S3_FILE] -b BUCKET [-v VERBOSE]`
+
+ 
+This script is intended for the prupose of transferring data between the ebs and an s3 bucket. 
+If downloading, the tool will download an s3 file which are already tar zipped. It will then unzip them for use. 
+If uploading, the tool will tar zip and then upload the zipped file to the s3 bucket of your choice.
+Example: `s3_ebs.py -l 'some/local/directory' -s 's3/directory/file' -b 's3-bucket-name' --download`
+        
+
+Arguments:
+```
+  -h, --help            show this help message and exit
+  -d, --download        Download file from s3 to ebs. Downloads a tar zipped
+                        file and then unzips it. Mutually exculsive with the
+                        upload flag.
+  -u, --upload          Upload file from ebs to s3. Tar zips the file and then
+                        uploads it. Mutually exclusive with the download flag.
+  -l LOCAL, --local LOCAL
+                        Local data directory where the data is either
+                        downloaded to or uploaded from, Default: current
+                        directory
+  -s S3_FILE, --s3_file S3_FILE
+                        s3 data directory where the data is either uploaded to
+                        or downloaded from. Used as an object key for boto3.
+                        For an explanation on keys, see https://boto3.amazonaw
+                        s.com/v1/documentation/api/latest/reference/services/s
+                        3.html?highlight=key#S3.Object.key Default: entire
+                        bucket
+  -b BUCKET, --bucket BUCKET
+                        s3 bucket name, required
+  -v VERBOSE, --verbose VERBOSE
+                        verbosity
+```
+
+Made by Aaron Earle-Richardson (ame224@cornell.edu)
 
 
 
