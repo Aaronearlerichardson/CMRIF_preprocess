@@ -19,9 +19,28 @@ import pydicom as dicom
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter
-        , description=""
+        , description="""
+         Data2bids is a script based on the SIMEXP lab script to convert nifti MRI files into BIDS format. This script has been modified to 
+         also parse README data as well as include conversion of DICOM files to nifti. The script utilizes Chris Rorden's Dcm2niix program for 
+         actual conversion. 
+
+         This script takes one of two formats for conversion. The first is a series of DICOM files in sequence with an optional \"medata\" folder which
+         contains any number of single or multi-echo uncompressed nifti files (.nii). Note that nifti files in this case must also have a corresponding 
+         DICOM scan run, but not necessarily scan echo (for example, one DICOM scan for run 5 but three nifti files which are echoes 1, 2, and 3 of
+         run 5). The other format is a series of nifti files and a README.txt file formatted the same way as it is in the example. Both formats are 
+         shown in the examples folder.
+
+         Both formats use a .json config file that maps either DICOM tags or text within the nifti file name to BIDS metadata. The syntax and formatting of this .json file 
+         can be found here https://github.com/SIMEXP/Data2Bids#heuristic .
+
+         The only thing this script does not account for is event files. If you have the 1D files that's taken care of, but chances are you have some other 
+         format. If this is the case, I recommend https://bids-specification.readthedocs.io/en/stable/04-modality-specific-files/05-task-events.html
+         so that you can make BIDS compliant event files.
+
+         Data2bids documentation at https://github.com/SIMEXP/Data2Bids
+         Dcm2niix documentation at https://github.com/rordenlab/dcm2niix"""
         , epilog="""
-            Documentation at https://github.com/SIMEXP/Data2Bids
+            Made by Aaron Earle-Richardson (ame224@cornell.edu)
             """)
 
     group = parser.add_mutually_exclusive_group(required=True)
@@ -41,7 +60,7 @@ def get_parser(): #parses flags at onset of command
         , "--config"
         , required=False
         , default=None
-        , help="JSON configuration file (see example/config.json)",
+        , help="JSON configuration file (see https://github.com/SIMEXP/Data2Bids/blob/master/example/config.json)",
         )
 
     parser.add_argument(
@@ -66,7 +85,10 @@ def get_parser(): #parses flags at onset of command
         , nargs='*'
         , type=int
         , required=False
-        , help="indicator of multi-echo dataset",
+        , help="""
+        indicator of multi-echo dataset. Only necessary if NOT converting DICOMs. For example, if runs 3-6 were all multi-echo then the flag
+        should look like: -m 3 4 5 6 . Additionally, the -m flag may be called by itself if you wish to let data2bids auto-detect multi echo data,
+        but it will not be able to tell you if there is a mistake."""
         )
 
     parser.add_argument(
@@ -74,7 +96,7 @@ def get_parser(): #parses flags at onset of command
         , "--verbose"
         , required=False
         , action='store_true' 
-        , help="JSON configuration file (see example/config.json)",
+        , help="verbosity",
         )
 
     return(parser)
@@ -109,7 +131,7 @@ class Data2Bids(): #main conversion and file organization program
             else:
                 self._multi_echo = multi_echo
 
-    def set_DICOM(self, ddir):
+    def set_DICOM(self, ddir): #triggers only if dicom flag is called and therefore _data_dir is None
         if self._data_dir is None:
             self._data_dir = os.path.dirname(self._bids_dir)
             subdirs = [x[0] for x in os.walk(ddir)]
@@ -131,6 +153,7 @@ class Data2Bids(): #main conversion and file organization program
                     if str(int(runmatch)) not in runlist:
                         runlist.append(str(int(runmatch)))
                     shutil.copyfile(os.path.join(ddir,"medata",me),os.path.join(sub_dir,me))
+                self.is_multi_echo = True #will trigger even if single echo data is in medata folder. Should still be okay
 
             for subdir in subdirs[1:]: #not including parent folder or /medata, run dcm2niix on non me data
                 try:
@@ -140,6 +163,7 @@ class Data2Bids(): #main conversion and file organization program
                     continue
                 firstfile = [x[2] for x in os.walk(subdir)][0][0]
                 #print(str(fobj[0x20, 0x11].value), runlist)
+                # running dcm2niix, 
                 if str(fobj[0x20, 0x11].value) in runlist:
                     proc = subprocess.Popen("dcm2niix -z y -f run{SCAN_NUM}_%p_%t_sub{SUB_NUM} -o {OUTPUT_DIR} -s y -b y {DATA_DIR}".format(
                         OUTPUT_DIR=sub_dir, SUB_NUM=sub_num, DATA_DIR=os.path.join(subdir,firstfile), SCAN_NUM=scan_num), shell=True, stdout=subprocess.PIPE)
@@ -213,7 +237,7 @@ class Data2Bids(): #main conversion and file organization program
                 self._bids_dir = os.path.join(self._data_dir, self._dataset_name + "_BIDS")
             except TypeError:
                 print("Error: Please provide input data directory if no BIDS directory...")
-        else:
+        else: #deleting old BIDS to make room for new 
             if not os.path.basename(os.path.normpath(bids_dir)) == "BIDS":
                 newdir = os.path.join(bids_dir,"BIDS")
             else:
@@ -265,7 +289,7 @@ class Data2Bids(): #main conversion and file organization program
         #except FileNotFoundError:
         #    print("bids-validator does not appear to be installed")
 
-    def generate_names(self, part_match, src_file_path, filename, namelist=None):
+    def generate_names(self, part_match, src_file_path, filename, namelist=None): #function to run through name text and generate metadata
         sess_match = None
         ce_match = None
         acq_match = None
@@ -338,7 +362,7 @@ class Data2Bids(): #main conversion and file organization program
         except AssertionError:
             print("No run found for %s" %src_file_path)
 
-        if self.multi_echo_check(run_match):
+        if self.multi_echo_check(run_match,filename):
             try:
                 echo_match = self.match_regexp(self._config["echo"],filename)
                 new_name = new_name + "_echo-" + echo_match 
@@ -358,16 +382,23 @@ class Data2Bids(): #main conversion and file organization program
         tslice = delay + ((sNum) * intervaltime)
         return(tslice)
     
-    def multi_echo_check(self,runnum):
+    def multi_echo_check(self,runnum,src_file=""): # check to see if run is multi echo based on input
         if self.is_multi_echo:
-            if int(runnum) in self._multi_echo:
+            if int(runnum) in self._multi_echo: 
                 return(True)
             else:
-                return(False)
+                if self._multi_echo == 0:
+                    try:
+                        self.match_regexp(self._config["echo"],src_file)
+                    except AssertionError:
+                        return(False)
+                    return(True)
+                else:
+                    return(False)
         else:
             return(False)
 
-    def get_params(self,folder,echo_num,run_num):
+    def get_params(self,folder,echo_num,run_num): #function to run through DICOMs and get metadata
         #threading?
         if self.is_multi_echo and run_num in self._multi_echo:
             vols_per_time = len(self._config['delayTimeInSec'])-1
@@ -463,7 +494,7 @@ class Data2Bids(): #main conversion and file organization program
                 sub.unlink()
         pth.rmdir()
 
-    def run(self):
+    def run(self): #main function
 
         # First we check that every parameters are configured
         if (self._data_dir is not None
@@ -584,11 +615,11 @@ class Data2Bids(): #main conversion and file organization program
                             files.append(src_file_path)
                             part_match = ""
                         continue
-                    elif re.match(".*?" + "EADME.txt", file): 
+                    elif re.match(".*?" + "EADME.txt", file):  #if README.txt in image list
                         with open(src_file_path, 'r') as readmetext:
                             for line in readmetext:
                                 regret_words = ["Abort","NOTE"]
-                                if ". tempAttnAudT" in line:
+                                if ". tempAttnAudT" in line:  #these lines could and should be improved by linking config["func.task"] instead of literal strings
                                     prevline="con"
                                     tsv_condition_runs.append(re.search(r'\d+', line).group()) #save the first number on the line
                                 elif ". fsoSubLocal" in line:
@@ -617,11 +648,6 @@ class Data2Bids(): #main conversion and file organization program
                             if not os.path.exists(self._bids_dir + "/.bidsignore"):
                                 with open(self._bids_dir + "/.bidsignore", 'w') as f:
                                     f.write("*.txt")
-                                #with open(self._bids_dir + "/.bidsignore", 'a') as f:
-                                    #f.write(self._bids_dir + "/sub-" + part_match + "/README")
-                            #else:
-                                #with open(self._bids_dir + "/.bidsignore", 'w') as f:
-                                    #f.write(self._bids_dir + "/sub-" + part_match + "/README")
                         else: 
                             files.append(src_file_path)
                         continue
@@ -669,7 +695,7 @@ class Data2Bids(): #main conversion and file organization program
 
                         # create the nifti1 image
                         # if minc format, invert the data and change the affine transformation
-                        # there is also an issue on minc headers, TO CHECK...
+                        # there is also an issue on minc headers
                         if curr_ext == ".mnc":
                             if len(nib_img.shape) > 3:
                                 nib_affine[0:3, 0:3] = nib_affine[0:3, 0:3] 
@@ -714,14 +740,12 @@ class Data2Bids(): #main conversion and file organization program
 
                     
 
-            # convert those tsv's
+            #This section is for converting .1D files to tsv event files. If you have the 1D files that's great, but chances are you have some other 
+            #format if this is the case, I recommend https://bids-specification.readthedocs.io/en/stable/04-modality-specific-files/05-task-events.html
+            #so that you can make BIDS compliant event files 
             fields = list( list() for _ in range(max(run_list)))
             categories = list( list() for _ in range(max(run_list)))
             writenames = list( list() for _ in range(max(run_list)))
-            #TRfields = list( list() for _ in range(max(run_list)))
-            #TRcategories = list( list() for _ in range(max(run_list)))
-            #tempTRfields = list( list() for _ in range(max(run_list)))
-            #tempTRcategories = list( list() for _ in range(max(run_list)))
             n=0                                # creating variables to save and write from
             for d_file in d_list :
                 #print(d_file)
@@ -827,7 +851,7 @@ class Data2Bids(): #main conversion and file organization program
         else:
             print("Warning: No parameters are defined !")
 
-class DisplayablePath():
+class DisplayablePath(): # this code simply creates a tree visual to explain the BIDS file organization
     display_filename_prefix_middle = '├──'
     display_filename_prefix_last = '└──'
     display_parent_prefix_middle = '    '

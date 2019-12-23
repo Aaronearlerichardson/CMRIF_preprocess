@@ -11,10 +11,13 @@ from multiprocessing import Pool, current_process, cpu_count
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter
-        , description=" s3_ebs.py -l 'some/local/directory' -s 's3/directory/file' -b 's3-bucket-name' --download  "
-        , epilog="""
-            Made by Aaron Earle-Richardson (ame224@cornell.edu)
-            """)
+        , description=""" 
+        This script is intended for the prupose of transferring data between the ebs and an s3 bucket. 
+        If downloading, the tool will download an s3 file which are already tar zipped. It will then unzip them for use. 
+        If uploading, the tool will tar zip and then upload the zipped file to the s3 bucket of your choice.
+        s3_ebs.py -l 'some/local/directory' -s 's3/directory/file' -b 's3-bucket-name' --download  
+        """
+        , epilog="Made by Aaron Earle-Richardson (ame224@cornell.edu)")
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
@@ -23,8 +26,7 @@ def get_parser(): #parses flags at onset of command
         action='store_true',
         required=False,
         default=False,
-        help="""
-        
+        help=""" Download file from s3 to ebs. Downloads a tar zipped file and then unzips it. Mutually exculsive with the upload flag.
         """)
     group.add_argument(
         '-u',
@@ -32,22 +34,25 @@ def get_parser(): #parses flags at onset of command
         action='store_true',
         required=False,
         default=False,
-        help="""
-        
+        help=""" Upload file from ebs to s3. Tar zips the file and then uploads it. Mutually exclusive with the download flag.
         """)
     parser.add_argument(
         "-l"
         , "--local"
         , required=False
         , default=os.getcwd()
-        , help="Local data directory(ies), Default: current directory"
+        , help="Local data directory where the data is either downloaded to or uploaded from, Default: current directory"
         )
     parser.add_argument(
         "-s"
         , "--s3_file"
         , required=False
         , default=""
-        , help="s3 data directory(ies), Default: all/root"
+        , help="""
+        s3 data directory where the data is either uploaded to or downloaded from. Used as an object key for boto3. 
+        For an explanation on keys, see https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html?highlight=key#S3.Object.key 
+        Default: entire bucket 
+        """
         )
     parser.add_argument(
         "-b"
