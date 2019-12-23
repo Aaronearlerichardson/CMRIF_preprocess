@@ -25,7 +25,13 @@ os.environ['OMP_NUM_THREADS'] = str(cpu_count()) #tedana resets thread count on 
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter
-        , description=" ex: python3 CMRIF_preprocess.py -i /media/sf_Ubuntu_files/BIDS -ex s12r17 -verb "
+        , description=""" 
+        CMRIF_preprocess is a preprocessing script that allows for the user to substitute in any software packages they want for any process. It takes 
+        full advantage of BIDS formatting for intuitive dataset querying via the pybids module. It is recommended that users take a quick look at 
+        their tutorial (https://github.com/bids-standard/pybids/blob/master/examples/pybids_tutorial.ipynb). One can also use their 
+        documentation (https://bids-standard.github.io/pybids/) for reference.
+        ex: python3 CMRIF_preprocess.py -i /media/sf_Ubuntu_files/BIDS -ex s12r17 -verb 
+        """
         , epilog="""
             Made by Aaron Earle-Richardson (ame224@cornell.edu)
             """)
@@ -43,7 +49,7 @@ def get_parser(): #parses flags at onset of command
         , "--verbose"
         , required=False
         , action='store_true' 
-        , help="JSON configuration file (see example/config.json)",
+        , help="Verbosity",
         )
     
     parser.add_argument(
@@ -62,7 +68,10 @@ def get_parser(): #parses flags at onset of command
         required=False,
         default=None,
         help="""
-        
+        Option to exclude scans based on either subject number, scan run number, or echo number. This option will import all files in the BIDS folder
+        into the BIDSLayout object except those listed here. For example, if I wanted to import all files except subject 12, run 3, echo 2, I would
+        add to the command \"-ex s12r3e2\". If subject 12 has only 3 runs, writing \"-ex s12r1 s12r2 s12r3\" is the same as writing \"-ex s12\".
+        Mutually exclusive with the -in option.
         """)
     group.add_argument(
         '-in',
@@ -71,7 +80,10 @@ def get_parser(): #parses flags at onset of command
         required=False,
         default=None,
         help="""
-        
+        Option to include scans based on either subject number, scan run number, or echo number. This option will only import files from the BIDS folder
+        to the BIDSLayout object if they are listed here. For example, if I wanted to import only subject 12, run 3, echo 2, I would
+        add to the command \"-in s12r3e2\". If subject 12 has only 3 runs, writing \"-in s12r1 s12r2 s12r3\" is the same as writing \"-in s12\".
+        Mutually eclusive with the -ex option.
         """)
 
     return(parser)
@@ -93,7 +105,7 @@ class Preprocessing():
         else:
             self._is_verbose = False
 
-    def set_bids(self,include,exclude):
+    def set_bids(self,include,exclude): #this function sets up the BIDSLayout object by including/excluding scans by subject, run, or echo
 
         if exclude is not None:
             parsestr = "|".join(exclude)
@@ -127,7 +139,7 @@ class Preprocessing():
                     else:
                         patterns += parsestr[i].zfill(2) + ".*"
                    
-        #print(patterns)
+        #actually including or excluding files
         ignore = []
         for root, _, files in os.walk(self._data_dir):
             for file in files:
@@ -150,7 +162,7 @@ class Preprocessing():
         else:
             self._data_dir = data_dir
 
-    def set_out_dir(self, output_dir):
+    def set_out_dir(self, output_dir): #performs the necessary job of creating a dataset_description.json
         if output_dir is None:
             self._output_dir = os.path.join(self._data_dir,"derivatives/preprocessing")
             if not os.path.isdir(self._output_dir):
@@ -168,8 +180,10 @@ class Preprocessing():
                 data.update(entry)
                 json.dump(data, fst)
 
-    def FuncHandler(self,fileobj,output,suffix):
-
+    def FuncHandler(self,fileobj,output,suffix): # This function primarily allows files to overwrite their inputs as outputs without causing errors
+                                                # it also checks root, working directory, and origional file address. It also allows for the user 
+                                                # to add on a suffix instead of typing a whole path for a new output. Finally, it integrates a sub-brick
+                                                # specifier  so that specific subsections of an image may be selected instead of the whole thing.
         if type(fileobj) == models.BIDSImageFile: #setting file to temp file before performing operation
             fileobj = fileobj.path
         elif type(fileobj) is not str:
@@ -218,7 +232,8 @@ class Preprocessing():
 
 
     ### These are the standalone tools, useable on their own and customiseable for alternate preprocessing algorithms.
-    # it is recommended that you not edit anything above this line (excluding package imports) without a serious knowledge of python and this script 
+    # it is recommended that you not edit anything above this line (excluding package imports and argparser)
+    # without a serious knowledge of python and this script 
 
     #cortical reconstruction
     def cortical_recon(self,filepath=None):
