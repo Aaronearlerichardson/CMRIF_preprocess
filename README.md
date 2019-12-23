@@ -123,6 +123,57 @@ Arguments:
                         verbosity
 ```
 
+### data2bids.py
+
+usage: `data2bids.py [-h] [-i INPUT_DIR] [-c CONFIG] [-o OUTPUT_DIR] [-d DICOM_PATH] [-m [MULTI_ECHO [MULTI_ECHO ...]]] [-verb]`
+
+Data2bids is a script based on the SIMEXP lab script to convert nifti MRI files into BIDS format. This script has been modified to 
+also parse README data as well as include conversion of DICOM files to nifti. The script utilizes Chris Rorden's Dcm2niix program for 
+actual conversion. 
+
+This script takes one of two formats for conversion. The first is a series of DICOM files in sequence with an optional "medata" folder which
+contains any number of single or multi-echo uncompressed nifti files (.nii). Note that nifti files in this case must also have a corresponding 
+DICOM scan run, but not necessarily scan echo (for example, one DICOM scan for run 5 but three nifti files which are echoes 1, 2, and 3 of
+run 5). The other format is a series of nifti files and a README.txt file formatted the same way as it is in the example. Both formats are 
+shown in the examples folder.
+
+Both formats use a .json config file that maps either DICOM tags or text within the nifti file name to BIDS metadata. The syntax and formatting of this .json file 
+can be found here https://github.com/SIMEXP/Data2Bids#heuristic .
+
+The only thing this script does not account for is event files. If you have the 1D files that's taken care of, but chances are you have some other 
+format. If this is the case, I recommend https://bids-specification.readthedocs.io/en/stable/04-modality-specific-files/05-task-events.html
+so that you can make BIDS compliant event files.
+
+Data2bids documentation at https://github.com/SIMEXP/Data2Bids
+Dcm2niix documentation at https://github.com/rordenlab/dcm2niix
+
+Arguments: ```
+  -h, --help            show this help message and exit
+  -i INPUT_DIR, --input_dir INPUT_DIR
+                        Input data directory(ies), must include a readme.txt
+                        file formatted like example under examples folder.
+                        Mutually exclusive with DICOM directory option.
+                        Default: current directory
+  -c CONFIG, --config CONFIG
+                        JSON configuration file (see https://github.com/SIMEXP
+                        /Data2Bids/blob/master/example/config.json)
+  -o OUTPUT_DIR, --output_dir OUTPUT_DIR
+                        Output BIDS directory, Default: Inside current
+                        directory
+  -d DICOM_PATH, --DICOM_path DICOM_PATH
+                        Optional DICOM directory, Mutually exclusive with
+                        input directory option
+  -m [MULTI_ECHO [MULTI_ECHO ...]], --multi_echo [MULTI_ECHO [MULTI_ECHO ...]]
+                        indicator of multi-echo dataset. Only necessary if NOT
+                        converting DICOMs. For example, if runs 3-6 were all
+                        multi-echo then the flag should look like: -m 3 4 5 6
+                        . Additionally, the -m flag may be called by itself if
+                        you wish to let data2bids auto-detect multi echo data,
+                        but it will not be able to tell you if there is a
+                        mistake.
+  -verb, --verbose      verbosity
+    ```
+
 Made by Aaron Earle-Richardson (ame224@cornell.edu)
 
 
