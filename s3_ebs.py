@@ -6,7 +6,9 @@ import sys
 import botocore
 import tarfile
 import io
-from multiprocessing import Pool, current_process, cpu_count
+import subprocess
+from multiprocessing import Pool, current_process, cpu_count, Queue, Process
+
 
 def get_parser(): #parses flags at onset of command
     parser = argparse.ArgumentParser(
@@ -151,49 +153,22 @@ class Transfer():
     def percent_cb(self, complete, total):
         sys.stdout.write('.')
         sys.stdout.flush()
-
-    def upload_dir(self, sourceDir,bucket_name,destDir):
+    def make_tarfile(self,output_filename, source_dir):
+        print("Compressing...")
+        with tarfile.open(output_filename,"w:gz") as tar:
+            bashCommand = "tar -v -c --use-compress-program=pigz --checkpoint=5000 --block-number -f {source}.tar.gz {source} ".format(source=os.path.abspath(source_dir))
+            process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+            process.communicate()
+        
+    def upload_dir(self,sourceDir,bucket_name,destDir):
 
         s3 = boto3.client('s3')
 
-        #max size in bytes before uploading in parts. between 1 and 5 GB recommended
-        MAX_SIZE = 5 * 1000 * 1000
-        #size of parts when uploading in parts
-        PART_SIZE = 1 * 1000 * 1000
-
-        bucket = s3.Bucket(bucket_name)
-
-        uploadFileNames = []
-        for (sourceDir, dirname, filename) in os.walk(sourceDir):
-            uploadFileNames.extend(filename)
-            break
-
-        for filename in uploadFileNames:
-            sourcepath = os.path.join(sourceDir + filename)
-            destpath = os.path.join(destDir, filename)
-            print('Uploading %s to Amazon S3 bucket %s' % \
-                (sourcepath, bucket_name))
-
-            filesize = os.path.getsize(sourcepath)
-            if filesize > MAX_SIZE:
-                print("multipart upload")
-                mp = bucket.create_multipart_upload(destpath)
-                fp = open(sourcepath,'rb')
-                fp_num = 0
-                while (fp.tell() < filesize):
-                    fp_num += 1
-                    print("uploading part %i" %fp_num)
-                    mp.upload_part_from_file(fp, fp_num, cb=self.percent_cb, num_cb=10, size=PART_SIZE)
-
-                mp.complete_upload()
-
-            else:
-                #print("singlepart upload")
-                #k = botocore.s3.key.Key(bucket)
-                #k.key = destpath
-                #k.set_contents_from_filename(sourcepath,
-                        #cb=percent_cb, num_cb=10)
-                pass
+        self.make_tarfile(sourceDir + ".tar.gz",sourceDir)
+        print("Uploading...")
+        with open(sourceDir + ".tar.gz", "rb") as f:
+            s3.upload_fileobj(f, bucket_name, os.path.join(destDir,sourceDir + ".tar.gz"))
+        os.remove(sourceDir + ".tar.gz")
 
 def get_file_progress_file_object_class():
     class FileProgressFileObject(tarfile.ExFileObject):
@@ -231,4 +206,4 @@ if __name__ == "__main__":
         print("Beginning download")
         tr.download_dir(tr._s3_file,tr._local,tr._bucket_name)
     elif tr._upload:
-        pass
+        tr.upload_dir(tr._local,tr._bucket_name,tr._s3_file)
