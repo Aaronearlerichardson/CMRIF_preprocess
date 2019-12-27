@@ -9,7 +9,7 @@ Python packages:
 boto3, pathlib, pybids, pydicom, nipype, pip, tedana
 
 Ubuntu packages:
-dcm2niix, pigz (optional)
+dcm2niix, pigz
 
 # Host Requirements
 
@@ -17,6 +17,7 @@ dcm2niix, pigz (optional)
 xauth
 
 ### Mac:
+xQuartz
 
 # Getting Started
 
