@@ -156,7 +156,8 @@ class Transfer():
     def make_tarfile(self,output_filename, source_dir):
         print("Compressing...")
         with tarfile.open(output_filename,"w:gz") as tar:
-            bashCommand = "tar -v -c --use-compress-program=pigz --checkpoint=5000 --block-number -f {source}.tar.gz {source} ".format(source=os.path.abspath(source_dir))
+            bashCommand = "tar -v -c --use-compress-program=pigz --checkpoint=5000 --block-number -f {source}.tar.gz {source} ".format(
+                source=os.path.abspath(source_dir))
             process = subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
             process.communicate()
         
@@ -195,8 +196,6 @@ class ProgressFileObject(io.FileIO):
     def read(self, size):
         sys.stderr.write("\rUnzipping file: {0:.2%}".format(self.tell()/self._total_size))
         return io.FileIO.read(self, size)
-
-
 
 if __name__ == "__main__":
     args = get_parser().parse_args()
