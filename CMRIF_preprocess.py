@@ -147,10 +147,6 @@ class Preprocessing():
                     ignore.append(os.path.join(root,file))
                 elif include is not None and not re.match(patterns,file):
                     ignore.append(os.path.join(root,file))
-
-        
-
-
         self.BIDS_layout = BIDSLayout(self._data_dir,ignore=ignore)   
 
     def get_data_dir(self):
@@ -214,7 +210,9 @@ class Preprocessing():
             else:
                 fileobj = tempfileobj
 
-        if output == None and suffix == None:
+        if output == None and suffix == None:   # Renames input file to add a "desc-temp" suffix if the user has not given an output file name. 
+                                                # This marks the file for deletion but only after the output file (with the same name) is generated,
+                                                # effectively "overwrighting" the file. This will not happen if an output is named
             if "_desc-temp" not in fileobj:
                 output = fileobj
                 fileobj = output.split('.nii.gz')[0] + "_desc-temp.nii.gz"
@@ -230,18 +228,18 @@ class Preprocessing():
         return(fileobj,output)
             
 
-
     ### These are the standalone tools, useable on their own and customiseable for alternate preprocessing algorithms.
     # it is recommended that you not edit anything above this line (excluding package imports and argparser)
     # without a serious knowledge of python and this script 
 
     #cortical reconstruction
-    def cortical_recon(self,filepath=None):
+    def cortical_recon(self,filepath=None): 
         if filepath == None:
             filepath = self._data_dir
         freesurfer.ReconAll(filepath)
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.freesurfer/preprocess.html#reconall
 
-    def skullstrip(self,fileobj=None,out_file=None,args=None,suffix=None):
+    def skullstrip(self,fileobj=None,out_file=None,args=None,suffix=None): 
 
         #setting files
         fileobj, out_file = self.FuncHandler(fileobj,out_file,suffix=suffix)
@@ -252,6 +250,7 @@ class Preprocessing():
             args_in = args_in + args
         #running skull stripping (change this to change skull stripping program)
         fsl.BET(in_file=fileobj,out_file=out_file,args=args_in,output_type="NIFTI_GZ").run()
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.fsl/preprocess.html#bet
 
         #remove temp files
         if type(fileobj) == models.BIDSImageFile:
@@ -269,6 +268,7 @@ class Preprocessing():
             args_in = args_in + args
 
         afni.Despike(in_file=fileobj,out_file=out_file,args=args_in).run()
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/preprocess.html#despike
 
         #remove temp files
         if type(fileobj) == models.BIDSImageFile:
@@ -284,6 +284,7 @@ class Preprocessing():
         fileobj1, out_file = self.FuncHandler(fileobj1,out_file,suffix)
     
         ThreeDWarp = afni.Warp(in_file=fileobj1,out_file=out_file)
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/preprocess.html#warp
         if args is not None:
             ThreeDWarp.inputs.args=args
         if transformation == 'card2oblique':
@@ -326,6 +327,7 @@ class Preprocessing():
             args_in = args_in + args
         
         afni.Axialize(in_file=fileobj,out_file=out_file, args=args_in).run()
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/utils.html#axialize
 
         #remove temp files
         if type(fileobj) == models.BIDSImageFile:
@@ -337,6 +339,8 @@ class Preprocessing():
 
         in_file, out_file = self.FuncHandler(in_file,out_file,suffix=suffix)
         myreg = afni.Volreg(in_file=in_file,out_file=out_file)
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/preprocess.html#volreg
+
         if base is not None:
             base, _ = self.FuncHandler(base,out_file,suffix)
             myreg.inputs.basefile = base
@@ -368,6 +372,8 @@ class Preprocessing():
             suffix = "copy"
         in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
         copy3d = afni.Copy()
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/utils.html#copy
+
         copy3d.inputs.in_file = in_file
         copy3d.inputs.out_file = out_file
         copy3d.inputs.verbose = self._is_verbose
@@ -380,12 +386,14 @@ class Preprocessing():
         if "_desc-temp" in in_file:
             os.remove(in_file)
 
-    def onedcat(self,in_files,out_file,sel=None):
+    def onedcat(self,in_files,out_file,sel=None): 
 
         if type(in_files) is str:
             in_files = [in_files]
         
         cat = afni.Cat(in_files=in_files,out_file=out_file)
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/utils.html#cat
+
         if sel is not None:
             if not "'" in sel and type(sel) is str:
                 sel="'{string}'".format(string=sel)
@@ -399,6 +407,8 @@ class Preprocessing():
         in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
         #out_file = out_file.replace(".nii.gz","")
         mytshift = afni.TShift(in_file=in_file, interp=interp,outputtype='NIFTI_GZ')
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/preprocess.html#tshift
+
         #mytshift.inputs.args = "-prefix %s & %s " % (out_file, out_file.) 
         mytshift.run()
         os.rename(in_file.replace(".nii.gz","_tshift.nii.gz"),out_file)
@@ -406,6 +416,7 @@ class Preprocessing():
 
         self.refit(in_file=out_file,args="-view orig")
 
+        #remove temp files
         if type(in_file) == models.BIDSImageFile:
             in_file = os.path.join(self._output_dir,in_file.filename)
         if "_desc-temp" in in_file:
@@ -414,10 +425,13 @@ class Preprocessing():
     def refit(self,in_file,out_file=None,deoblique=False,args=""):
 
         myfit = afni.Refit(in_file=in_file)
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/utils.html#refit
+
         myfit.inputs.deoblique = deoblique
         myfit.inputs.args = args
         myfit.run()
 
+        #remove temp files
         if type(in_file) == models.BIDSImageFile:
             in_file = os.path.join(self._output_dir,in_file.filename)
         if "_desc-temp" in in_file:
@@ -428,6 +442,8 @@ class Preprocessing():
         in_file, out_file = self.FuncHandler(in_file,out_file,suffix)
 
         myalline = afni.Allineate(in_file=in_file,out_file=out_file)
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/preprocess.html#allineate
+
         myalline.inputs.args = args
         #myalline.inputs.num_threads = cpu_count()
         if mat is not None:
@@ -437,12 +453,11 @@ class Preprocessing():
             myalline.inputs.reference = base
         myalline.run()
 
+        #remove temp files
         if type(in_file) == models.BIDSImageFile:
             in_file = os.path.join(self._output_dir,in_file.filename)
         if "_desc-temp" in in_file:
             os.remove(in_file)
-    #myalline.inputs.final_interpolation = final
-    #myalline.inputs.float_out = float_out
 
     def zcat(self,in_files,out_file,suffix=None,args=""):
 
@@ -452,6 +467,8 @@ class Preprocessing():
             data.append(x)
 
         myzcat = afni.Zcat(in_files=data,out_file=out_file)
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/utils.html#zcat
+
         myzcat.inputs.args = args
         myzcat.run()
 
@@ -467,6 +484,8 @@ class Preprocessing():
         in_file_c, _ = self.FuncHandler(in_file_c,output,suffix)
 
         mycalc = afni.Calc(in_file_a=in_file_a,in_file_b=in_file_b,expr=expr,out_file=output)
+        #https://nipype.readthedocs.io/en/latest/interfaces/generated/interfaces.afni/utils.html#calc
+
         mycalc.inputs.outputtype = "NIFTI_GZ"
         mycalc.inputs.num_threads = cpu_count()
         mycalc.run()
