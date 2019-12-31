@@ -186,7 +186,8 @@ class Preprocessing():
             raise TypeError('file inputs must be either a BIDSImageFile, pathlike string')
 
         smatch = re.match(r"(.*\.nii(?:\.gz))(((?:\[|\{)\d+(?:\.\.\d+|)(?:\]|\})){1,2})",fileobj) #sub-brick parser similar to afni's
-        dmatch = re.match(r"(.*\.1D)(((?:\[|\{)\d+(?:\.\.\d+|)(?:\]|\})){1,2})",fileobj)
+        dmatch = re.match(r"(.*\.1D)(((?:\[|\{)\d+(?:\.\.\d+|)(?:\]|\})){1,2})",fileobj) #if you want to understand this mess, go here:
+                                                                                         #https://docs.python.org/3/library/re.html
         if smatch:
             fileobj = smatch.group(1).split(".nii.gz")[0]+"_desc-temp.nii.gz"
             afni.TCatSubBrick(in_files=[(smatch.group(1),"'{index}'".format(index=smatch.group(2)))],out_file=fileobj).run()
@@ -227,7 +228,6 @@ class Preprocessing():
             print("both suffix and output filename detected as input, using filename given")
         return(fileobj,output)
             
-
     ### These are the standalone tools, useable on their own and customiseable for alternate preprocessing algorithms.
     # it is recommended that you not edit anything above this line (excluding package imports and argparser)
     # without a serious knowledge of python and this script 
@@ -262,7 +262,7 @@ class Preprocessing():
 
         #setting files
         fileobj, out_file = self.FuncHandler(fileobj,out_file,suffix=suffix)
-        args_in = "-overwrite" #add in terminal flags here (ex: "-overwrite") if you want them called with ubiquity
+        args_in = "" #add in terminal flags here (ex: "-overwrite") if you want them called with ubiquity
                     #accross the whole script any time this command is called. Otherwise add flags the the "args" argument of the command
         if args is not None:
             args_in = args_in + args
