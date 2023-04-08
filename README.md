@@ -20,4 +20,4 @@ xauth
 xQuartz
 
 ***
-To begin, head over to our [Getting Started](https://github.coecis.cornell.edu/kms424/CMRIF_preprocess/wiki/Getting-Started) page.
+To begin, head over to our [Getting Started](https://github.com/Aaronearlerichardson/CMRIF_preprocess/wiki/Getting-Started) page.
